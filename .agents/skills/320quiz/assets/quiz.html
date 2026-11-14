@@ -17,6 +17,7 @@
     <div id="quiz320-overview" aria-live="polite"></div>
     <div class="viz-row quiz320-space"><button id="quiz320-explain-results" class="btn" type="button">Explain my results</button><button id="quiz320-practice-missed" class="btn" type="button">Practice what I missed</button></div>
     <div id="quiz320-explanation-status" class="text-small" aria-live="polite"></div>
+    <div id="quiz320-teach" class="quiz320-space"></div>
     <div id="quiz320-review"></div>
     <div class="viz-row quiz320-space"><button id="quiz320-retry-missed" class="btn" type="button">Retry missed</button><button id="quiz320-retry" class="btn btn-primary" type="button">Try again</button></div>
   </div>
@@ -31,6 +32,7 @@
 #quiz320-preview .quiz320-tables th,#quiz320-preview .quiz320-tables td{overflow-wrap:anywhere}
 #quiz320-preview .quiz320-status{font-weight:500;color:var(--foreground)}
 #quiz320-preview .quiz320-review-item{padding:16px 0;border-bottom:1px solid var(--border)}
+#quiz320-preview .quiz320-teach-field{width:100%;max-width:100%;box-sizing:border-box;margin:8px 0}
 </style>
 <script type="application/json" id="quiz320-preview-bank">
 [
@@ -83,13 +85,13 @@
   const shuffle=(list,random)=>{const out=list.slice();for(let i=out.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[out[i],out[j]]=[out[j],out[i]];}return out;};
   const newSeed=()=>(Math.random()*4294967296)>>>0;
   // Each attempt presents a pool of bank indices in a shuffled order; answers hold the ORIGINAL option index.
-  const fresh=(pool=questions.map((q,i)=>i),seed=newSeed())=>({format:'320quiz',quizKey,seed,items:shuffle(pool,rng(seed)),answers:Array(pool.length).fill(null),index:0,tab:'quiz'});
+  const fresh=(pool=questions.map((q,i)=>i),seed=newSeed())=>({format:'320quiz',quizKey,seed,items:shuffle(pool,rng(seed)),answers:Array(pool.length).fill(null),index:0,tab:'quiz',teach:''});
   let state=fresh();
-  const valid=s=>s?.format==='320quiz' && s.quizKey===quizKey && Number.isInteger(s.seed) && Array.isArray(s.items) && s.items.length>0 && s.items.every(i=>Number.isInteger(i)&&i>=0&&i<bankSize) && Number.isInteger(s.index) && s.index>=0 && s.index<s.items.length && Array.isArray(s.answers) && s.answers.length===s.items.length && s.answers.every(a=>a===null || Number.isInteger(a)&&a>=0&&a<5) && ['quiz','results'].includes(s.tab);
+  const valid=s=>s?.format==='320quiz' && s.quizKey===quizKey && Number.isInteger(s.seed) && Array.isArray(s.items) && s.items.length>0 && s.items.every(i=>Number.isInteger(i)&&i>=0&&i<bankSize) && Number.isInteger(s.index) && s.index>=0 && s.index<s.items.length && Array.isArray(s.answers) && s.answers.length===s.items.length && s.answers.every(a=>a===null || Number.isInteger(a)&&a>=0&&a<5) && ['quiz','results'].includes(s.tab) && (s.teach===undefined||typeof s.teach==='string'&&s.teach.length<=TEACH_MAX);
   const total=()=>state.items.length;
   const qAt=k=>questions[state.items[k]];
   // Re-ask settings: a missed question returns REASK_GAP items later, at most MAX_ASKS times in one attempt.
-  const REASK_GAP=3,MAX_ASKS=3;
+  const REASK_GAP=3,MAX_ASKS=3,TEACH_MAX=600;
   // occurrence(k): how many times the same bank question appears before item k (0 = first attempt).
   const occurrence=k=>state.items.slice(0,k).filter(i=>i===state.items[k]).length;
   const firstItems=()=>state.items.map((_,k)=>k).filter(k=>occurrence(k)===0);
@@ -164,6 +166,24 @@
       showCopyPrompt(status,prompt);
     }finally{button.disabled=false;}
   }
+  // Teach-back: the learner explains the correct answer in their own words, then chat checks it.
+  const teachTarget=()=>{const missed=missedItems();const g=group(missed.length?missed:correctItems())[0];return g?g.k:null;};
+  function renderTeach(){
+    const k=teachTarget();
+    if(k===null){el('teach').innerHTML='';return;}
+    const q=qAt(k),missed=!isCorrect(k);
+    el('teach').innerHTML=`<h3>Teach it back</h3><p>${missed?'You missed':'You got'} Question ${k+1} (${esc(q.topic)}). Without looking at the feedback, explain in one or two sentences why ${letter(k,q.answer)} is correct${missed?' and where your answer went wrong':''}.</p><label class="form-label" for="quiz320-teach-text">Your explanation</label><textarea id="quiz320-teach-text" class="form-control quiz320-teach-field" rows="3" maxlength="${TEACH_MAX}" placeholder="Start with the rule or computation, then the number or value it produces.">${esc(state.teach||'')}</textarea><div class="viz-row"><button id="quiz320-teach-check" class="btn" type="button" ${(state.teach||'').trim()?'':'disabled'}>Check my explanation</button></div><div id="quiz320-teach-status" class="text-small" aria-live="polite"></div>`;
+    const field=el('teach-text');
+    field.addEventListener('input',()=>{state.teach=field.value.slice(0,TEACH_MAX);el('teach-check').disabled=!state.teach.trim();save();});
+    el('teach-check').addEventListener('click',event=>requestTeachCheck(event.currentTarget,k));
+  }
+  async function requestTeachCheck(button,k){
+    const text=(state.teach||'').trim();
+    if(!text)return;
+    const instruction='Check this CSE 320 learner\'s own explanation of a quiz answer. First verify the answer key. Then say in one line whether the explanation is correct, incomplete, or wrong. If it is incomplete or wrong, name the single missing or mistaken step and ask one question that would lead the learner to it. Do not restate the whole solution and do not explain other options unless asked.';
+    const payload={learnerExplanation:text,firstAttemptCorrect:isCorrect(k),question:context(k)};
+    await sendFollowUp(button,el('teach-status'),'Check my explanation',instruction+'\n\nQuiz context:\n'+JSON.stringify(payload,null,2));
+  }
   // Follow-up quiz request: near-transfer variants of what was missed, weighted toward the missed groups.
   async function requestPractice(button){
     const missed=missedItems();
@@ -225,6 +245,8 @@
       el('review').innerHTML=firstItems().map(k=>{const q=qAt(k);const later=laterItems(k);const status=isCorrect(k)?'Correct':recovered(k)?'Incorrect · recovered on re-ask':later.length?'Incorrect · missed again on re-ask':'Incorrect';return `<details class="quiz320-review-item"><summary>Question ${k+1} · ${status} · ${esc(q.topic)}</summary>${q.diagram?diagram(q.diagram):''}<p>${esc(q.q)}</p>${q.code?`<pre class="quiz320-code"><code>${esc(q.code)}</code></pre>`:''}<p>Your answer: ${letter(k,state.answers[k])}. ${esc(q.options[state.answers[k]])}</p>${later.map(j=>`<p>Re-ask ${occurrence(j)}: ${letter(j,state.answers[j])}. ${esc(q.options[state.answers[j]])} · ${isCorrect(j)?'Correct':'Incorrect'}</p>`).join('')}${feedback(k)}</details>`;}).join('');
       el('retry-missed').disabled=missed.length===0;
       el('practice-missed').disabled=missed.length===0;
+      if(!el('teach-text')||el('teach-text').dataset.k!==String(teachTarget()))renderTeach();
+      if(el('teach-text'))el('teach-text').dataset.k=String(teachTarget());
       el('retry-missed').textContent=missed.length?'Retry missed ('+missed.length+')':'Retry missed';
     }
   }
@@ -233,8 +255,8 @@
   el('next').addEventListener('click',()=>{if(state.index<total()-1)state.index++;else if(count()===total())state.tab='results';render();save();});
   el('test-tab').addEventListener('click',()=>{state.tab='quiz';render();save();});
   el('results-tab').addEventListener('click',()=>{if(count()===total()){state.tab='results';render();save();}});
-  el('retry').addEventListener('click',()=>{state=fresh();el('explanation-status').textContent='';render();save();});
-  el('retry-missed').addEventListener('click',()=>{const missed=[...new Set(missedItems().map(k=>state.items[k]))];if(!missed.length)return;state=fresh(missed);el('explanation-status').textContent='';render();save();});
+  el('retry').addEventListener('click',()=>{state=fresh();el('explanation-status').textContent='';el('teach').innerHTML='';render();save();});
+  el('retry-missed').addEventListener('click',()=>{const missed=[...new Set(missedItems().map(k=>state.items[k]))];if(!missed.length)return;state=fresh(missed);el('explanation-status').textContent='';el('teach').innerHTML='';render();save();});
   el('explain-results').addEventListener('click',event=>{if(count()===total())requestExplanation(event.currentTarget,null);});
   el('practice-missed').addEventListener('click',event=>requestPractice(event.currentTarget));
   root.addEventListener('click',event=>{const button=event.target.closest('button[data-explain]');if(button&&root.contains(button))requestExplanation(button,Number(button.dataset.explain));});
