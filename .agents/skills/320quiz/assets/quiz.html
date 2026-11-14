@@ -75,7 +75,7 @@
   let signature=2166136261;
   for(const char of JSON.stringify(questions))signature=Math.imul(signature^char.charCodeAt(0),16777619);
   const quizKey=(signature>>>0).toString(36);
-  root.querySelector('h2 + p').textContent=bankSize+' questions · 5 choices each · Shuffled each attempt · Immediate marking · Explanations on demand';
+  root.querySelector('h2 + p').textContent=bankSize+' questions · 5 choices each · Shuffled each attempt · Immediate marking · Missed questions come back · Explanations on demand';
   const el=name=>root.querySelector('#quiz320-'+name);
   const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   // Seeded PRNG (mulberry32) so question order and option order are reproducible from state.
@@ -88,17 +88,33 @@
   const valid=s=>s?.format==='320quiz' && s.quizKey===quizKey && Number.isInteger(s.seed) && Array.isArray(s.items) && s.items.length>0 && s.items.every(i=>Number.isInteger(i)&&i>=0&&i<bankSize) && Number.isInteger(s.index) && s.index>=0 && s.index<s.items.length && Array.isArray(s.answers) && s.answers.length===s.items.length && s.answers.every(a=>a===null || Number.isInteger(a)&&a>=0&&a<5) && ['quiz','results'].includes(s.tab);
   const total=()=>state.items.length;
   const qAt=k=>questions[state.items[k]];
-  // Option permutation for item k: perm[displayPosition] = original option index.
-  const perm=k=>shuffle([0,1,2,3,4],rng((state.seed^Math.imul(state.items[k]+1,2654435761))>>>0));
+  // Re-ask settings: a missed question returns REASK_GAP items later, at most MAX_ASKS times in one attempt.
+  const REASK_GAP=3,MAX_ASKS=3;
+  // occurrence(k): how many times the same bank question appears before item k (0 = first attempt).
+  const occurrence=k=>state.items.slice(0,k).filter(i=>i===state.items[k]).length;
+  const firstItems=()=>state.items.map((_,k)=>k).filter(k=>occurrence(k)===0);
+  const laterItems=k=>state.items.map((_,j)=>j).filter(j=>j>k&&state.items[j]===state.items[k]);
+  // Option permutation for item k: perm[displayPosition] = original option index. Re-asks get a different order.
+  const perm=k=>shuffle([0,1,2,3,4],rng((state.seed^Math.imul(state.items[k]+1,2654435761)^Math.imul(occurrence(k)+1,40503))>>>0));
   const letter=(k,original)=>'ABCDE'[perm(k).indexOf(original)];
   const count=()=>state.answers.filter(a=>a!==null).length;
   const isCorrect=k=>state.answers[k]===qAt(k).answer;
-  const score=()=>state.items.filter((_,k)=>isCorrect(k)).length;
-  const correctItems=()=>state.items.map((_,k)=>k).filter(k=>isCorrect(k));
-  const missedItems=()=>state.items.map((_,k)=>k).filter(k=>state.answers[k]!==null&&!isCorrect(k));
+  // Score, groups, and overview use FIRST attempts only. Re-asks are reported as recovery.
+  const score=()=>firstItems().filter(k=>isCorrect(k)).length;
+  const correctItems=()=>firstItems().filter(k=>isCorrect(k));
+  const missedItems=()=>firstItems().filter(k=>state.answers[k]!==null&&!isCorrect(k));
+  const recovered=k=>laterItems(k).some(j=>isCorrect(j));
+  const recoveredItems=()=>missedItems().filter(recovered);
+  const reasks=()=>total()-firstItems().length;
+  function requeue(k){
+    if(isCorrect(k)||occurrence(k)+1>=MAX_ASKS)return;
+    const at=Math.min(k+REASK_GAP,total());
+    state.items.splice(at,0,state.items[k]);
+    state.answers.splice(at,0,null);
+  }
   const canExplain=()=>typeof window.openai?.sendFollowUpMessage==='function'&&!document.documentElement.hasAttribute('data-visualize-standalone');
   function save(){
-    if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:{format:state.format,answered:count(),total:total(),bankSize,correct:score(),firstChoiceLocked:true,shuffled:true,correctTopics:[...new Set(correctItems().map(k=>qAt(k).correctSkill))],missedTopics:[...new Set(missedItems().map(k=>qAt(k).topic))]},privateContent:state}).catch(()=>{});
+    if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:{format:state.format,answered:count(),total:total(),bankSize,correct:score(),firstAttemptQuestions:firstItems().length,reasks:reasks(),recovered:recoveredItems().length,firstChoiceLocked:true,shuffled:true,correctTopics:[...new Set(correctItems().map(k=>qAt(k).correctSkill))],missedTopics:[...new Set(missedItems().map(k=>qAt(k).topic))]},privateContent:state}).catch(()=>{});
   }
   function diagram(d){
     const tables=d.tables.map(table=>`<table class="table table-sm"><caption>${esc(table.label)}</caption><thead><tr>${table.columns.map(column=>`<th scope="col">${esc(column)}</th>`).join('')}</tr></thead><tbody>${table.rows.map(row=>`<tr>${row.map(cell=>`<td class="tabular-nums">${esc(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table>`).join('');
@@ -107,7 +123,9 @@
   function feedback(k){
     const q=qAt(k),answer=state.answers[k],index=k;
     const correct=answer===q.answer;
-    return `<div class="quiz320-space"><p class="quiz320-status">${correct?'Correct.':'Incorrect.'} Correct answer: ${letter(k,q.answer)}. ${esc(q.options[q.answer])}</p><p class="text-small text-muted">Source: ${esc(q.source)}</p><button class="btn" type="button" data-explain="${index}">Explain this answer</button><div class="text-small" data-request-status aria-live="polite"></div></div>`;
+    const again=!correct&&laterItems(k).length?' This question will come back shortly.':'';
+    const recoveredNote=correct&&occurrence(k)>0?' Recovered on re-ask.':'';
+    return `<div class="quiz320-space"><p class="quiz320-status">${correct?'Correct.':'Incorrect.'}${recoveredNote} Correct answer: ${letter(k,q.answer)}. ${esc(q.options[q.answer])}${again}</p><p class="text-small text-muted">Source: ${esc(q.source)}</p><button class="btn" type="button" data-explain="${index}">Explain this answer</button><div class="text-small" data-request-status aria-live="polite"></div></div>`;
   }
   function group(ks){const groups=new Map();for(const k of ks){const q=qAt(k);const topic=q.reviewGroup||q.correctSkill||q.topic;const g=groups.get(topic)||{topic,count:0,k};g.count++;groups.set(topic,g);}return [...groups.values()].sort((a,b)=>b.count-a.count);}
   function overview(){
@@ -116,11 +134,11 @@
     const rightOverview=correct.length?group(correct).slice(0,3).map(g=>g.topic+' ('+g.count+' correct)').join('; ')+'.':'No correct answers in this attempt.';
     const wrongOverview=missed.length?group(missed).slice(0,3).map(g=>g.topic+' ('+g.count+' missed)').join('; ')+'.':'No incorrect answers in this attempt.';
     const improveOverview=missed.length?'Prioritize revisiting: '+group(missed).slice(0,3).map(g=>g.topic).join('; ')+'.':'All questions were correct. Try a harder check of the concepts you answered correctly.';
-    return `<div class="quiz320-space"><h3>Quick overview</h3><p><span class="quiz320-status">What was correct:</span> ${esc(rightOverview)}</p><p><span class="quiz320-status">What was wrong:</span> ${esc(wrongOverview)}</p><p><span class="quiz320-status">What to improve:</span> ${esc(improveOverview)}</p><p class="text-small text-muted">Based on this attempt only.</p></div>`;
+    return `<div class="quiz320-space"><h3>Quick overview</h3><p><span class="quiz320-status">What was correct:</span> ${esc(rightOverview)}</p><p><span class="quiz320-status">What was wrong:</span> ${esc(wrongOverview)}</p><p><span class="quiz320-status">What to improve:</span> ${esc(improveOverview)}</p>${missed.length?`<p><span class="quiz320-status">Re-asked:</span> ${recoveredItems().length} of ${missed.length} missed questions were answered correctly when they came back.${missed.length-recoveredItems().length?' Still missed after re-ask: '+esc(group(missed.filter(k=>!recovered(k))).map(g=>g.topic).join('; '))+'.':''}</p>`:''}<p class="text-small text-muted">Score counts first attempts only. Based on this attempt only.</p></div>`;
   }
   function context(k){
     const q=qAt(k),chosen=state.answers[k],order=perm(k);
-    return {questionNumber:k+1,id:q.id,topic:q.topic,question:q.q,options:order.map((original,i)=>({label:'ABCDE'[i],text:q.options[original]})),selected:chosen===null?null:{label:letter(k,chosen),text:q.options[chosen]},answerKey:{label:letter(k,q.answer),text:q.options[q.answer]},code:q.code||null,diagram:q.diagram||null,source:q.source};
+    return {questionNumber:k+1,attempt:occurrence(k)+1,id:q.id,topic:q.topic,question:q.q,options:order.map((original,i)=>({label:'ABCDE'[i],text:q.options[original]})),selected:chosen===null?null:{label:letter(k,chosen),text:q.options[chosen]},answerKey:{label:letter(k,q.answer),text:q.options[q.answer]},code:q.code||null,diagram:q.diagram||null,source:q.source};
   }
   async function requestExplanation(button,index){
     if(index!==null&&(!Number.isInteger(index)||index<0||index>=total()||state.answers[index]===null))return;
@@ -161,11 +179,13 @@
   function renderQuestion(){
     const k=state.index,q=qAt(k),answer=state.answers[k],order=perm(k);
     el('topic').textContent=q.topic;
-    el('question').innerHTML=`<h3>Question ${k+1} of ${total()}</h3>${q.diagram?diagram(q.diagram):''}<p>${esc(q.q)}</p>${q.code?`<pre class="quiz320-code"><code>${esc(q.code)}</code></pre>`:''}<fieldset class="quiz320-options"><legend class="sr-only">Select one of five answers</legend>${order.map((original,i)=>`<label class="form-check"><input class="form-check-input" type="radio" name="quiz320-answer" value="${original}" ${original===answer?'checked':''} ${answer!==null?'disabled':''}><span class="form-check-label">${'ABCDE'[i]}. ${esc(q.options[original])}${answer!==null&&original===q.answer?' <span class="quiz320-status">— Correct answer</span>':''}${answer!==null&&original===answer&&answer!==q.answer?' <span class="quiz320-status">— Your answer</span>':''}</span></label>`).join('')}</fieldset>`;
+    const again=occurrence(k)>0?` <span class="viz-badge">Re-ask ${occurrence(k)}</span>`:'';
+    el('question').innerHTML=`<h3>Question ${k+1} of ${total()}${again}</h3>${q.diagram?diagram(q.diagram):''}<p>${esc(q.q)}</p>${q.code?`<pre class="quiz320-code"><code>${esc(q.code)}</code></pre>`:''}<fieldset class="quiz320-options"><legend class="sr-only">Select one of five answers</legend>${order.map((original,i)=>`<label class="form-check"><input class="form-check-input" type="radio" name="quiz320-answer" value="${original}" ${original===answer?'checked':''} ${answer!==null?'disabled':''}><span class="form-check-label">${'ABCDE'[i]}. ${esc(q.options[original])}${answer!==null&&original===q.answer?' <span class="quiz320-status">— Correct answer</span>':''}${answer!==null&&original===answer&&answer!==q.answer?' <span class="quiz320-status">— Your answer</span>':''}</span></label>`).join('')}</fieldset>`;
     el('feedback').innerHTML=answer===null?'':feedback(k);
     root.querySelectorAll('input[name="quiz320-answer"]').forEach(input=>input.addEventListener('change',()=>{
       if(state.answers[state.index]!==null)return;
       state.answers[state.index]=Number(input.value);
+      requeue(state.index);
       render();save();
     }));
     el('prev').disabled=k===0;
@@ -174,7 +194,8 @@
   }
   function render(){
     const n=total(),done=count()===n;
-    el('count').textContent=count()+' / '+n+' answered'+(done?' · '+score()+' / '+n+' correct':'');
+    const firsts=firstItems().length;
+    el('count').textContent=count()+' / '+n+' answered'+(reasks()?' (incl. '+reasks()+' re-asks)':'')+(done?' · '+score()+' / '+firsts+' correct on first attempt':'');
     el('progress').setAttribute('aria-valuemax',n);
     el('progress').setAttribute('aria-valuenow',count());
     el('progress').firstElementChild.style.width=(count()/n*100)+'%';
@@ -187,9 +208,9 @@
     renderQuestion();
     if(done){
       const missed=missedItems();
-      el('score').textContent=score()+' / '+n+' correct · '+Math.round(score()/n*100)+'%'+(n<bankSize?' · Retry of '+n+' missed questions':'');
+      el('score').textContent=score()+' / '+firsts+' correct on first attempt · '+Math.round(score()/firsts*100)+'%'+(firsts<bankSize?' · Retry of '+firsts+' missed questions':'');
       el('overview').innerHTML=overview();
-      el('review').innerHTML=state.items.map((_,k)=>{const q=qAt(k);return `<details class="quiz320-review-item"><summary>Question ${k+1} · ${isCorrect(k)?'Correct':'Incorrect'} · ${esc(q.topic)}</summary>${q.diagram?diagram(q.diagram):''}<p>${esc(q.q)}</p>${q.code?`<pre class="quiz320-code"><code>${esc(q.code)}</code></pre>`:''}<p>Your answer: ${letter(k,state.answers[k])}. ${esc(q.options[state.answers[k]])}</p>${feedback(k)}</details>`;}).join('');
+      el('review').innerHTML=firstItems().map(k=>{const q=qAt(k);const later=laterItems(k);const status=isCorrect(k)?'Correct':recovered(k)?'Incorrect · recovered on re-ask':later.length?'Incorrect · missed again on re-ask':'Incorrect';return `<details class="quiz320-review-item"><summary>Question ${k+1} · ${status} · ${esc(q.topic)}</summary>${q.diagram?diagram(q.diagram):''}<p>${esc(q.q)}</p>${q.code?`<pre class="quiz320-code"><code>${esc(q.code)}</code></pre>`:''}<p>Your answer: ${letter(k,state.answers[k])}. ${esc(q.options[state.answers[k]])}</p>${later.map(j=>`<p>Re-ask ${occurrence(j)}: ${letter(j,state.answers[j])}. ${esc(q.options[state.answers[j]])} · ${isCorrect(j)?'Correct':'Incorrect'}</p>`).join('')}${feedback(k)}</details>`;}).join('');
       el('retry-missed').disabled=missed.length===0;
       el('retry-missed').textContent=missed.length?'Retry missed ('+missed.length+')':'Retry missed';
     }
