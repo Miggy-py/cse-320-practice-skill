@@ -1,9 +1,9 @@
 ---
-name: 320quiziteration3
-description: Create interactive CSE 320 practice quizzes for a midterm, the final, or a cumulative review using the supplied exam scope, review materials, slides, and assignment specifications. Preserve the iteration 2 format with five close choices, immediate first-choice scoring, explanations on demand, and a grouped results overview.
+name: 320quiz
+description: Create interactive CSE 320 practice quizzes for a midterm, the final, or a cumulative review using the supplied exam scope, review materials, slides, and assignment specifications. Each quiz has five close choices per question, immediate first-choice scoring, explanations on demand, and a grouped results overview.
 ---
 
-# CSE 320 Practice Quiz · Iteration 3
+# CSE 320 Practice Quiz
 
 ## Choose the material
 

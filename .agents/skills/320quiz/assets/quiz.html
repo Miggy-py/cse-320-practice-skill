@@ -78,9 +78,9 @@
   root.querySelector('h2 + p').textContent=total+' questions · 5 choices each · Immediate marking · Explanations on demand';
   const el=name=>root.querySelector('#quiz320-'+name);
   const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const fresh=()=>({format:'320quiziteration3',quizKey,index:0,answers:Array(total).fill(null),tab:'quiz'});
+  const fresh=()=>({format:'320quiz',quizKey,index:0,answers:Array(total).fill(null),tab:'quiz'});
   let state=fresh();
-  const valid=s=>s?.format==='320quiziteration3' && s.quizKey===quizKey && Number.isInteger(s.index) && s.index>=0 && s.index<total && Array.isArray(s.answers) && s.answers.length===total && s.answers.every(a=>a===null || Number.isInteger(a)&&a>=0&&a<5) && ['quiz','results'].includes(s.tab);
+  const valid=s=>s?.format==='320quiz' && s.quizKey===quizKey && Number.isInteger(s.index) && s.index>=0 && s.index<total && Array.isArray(s.answers) && s.answers.length===total && s.answers.every(a=>a===null || Number.isInteger(a)&&a>=0&&a<5) && ['quiz','results'].includes(s.tab);
   const count=()=>state.answers.filter(a=>a!==null).length;
   const score=()=>questions.filter((q,i)=>state.answers[i]===q.answer).length;
   const canExplain=()=>typeof window.openai?.sendFollowUpMessage==='function'&&!document.documentElement.hasAttribute('data-visualize-standalone');
