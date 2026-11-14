@@ -18,7 +18,7 @@
     <div class="viz-row quiz320-space"><button id="quiz320-explain-results" class="btn" type="button">Explain my results</button></div>
     <div id="quiz320-explanation-status" class="text-small" aria-live="polite"></div>
     <div id="quiz320-review"></div>
-    <div class="viz-row quiz320-space"><button id="quiz320-retry" class="btn btn-primary" type="button">Try again</button></div>
+    <div class="viz-row quiz320-space"><button id="quiz320-retry-missed" class="btn" type="button">Retry missed</button><button id="quiz320-retry" class="btn btn-primary" type="button">Try again</button></div>
   </div>
 </div>
 <style>
@@ -71,50 +71,64 @@
 (() => {
   const root=document.getElementById('quiz320-preview');
   const questions=JSON.parse(document.getElementById('quiz320-preview-bank').textContent);
-  const total=questions.length;
+  const bankSize=questions.length;
   let signature=2166136261;
   for(const char of JSON.stringify(questions))signature=Math.imul(signature^char.charCodeAt(0),16777619);
   const quizKey=(signature>>>0).toString(36);
-  root.querySelector('h2 + p').textContent=total+' questions · 5 choices each · Immediate marking · Explanations on demand';
+  root.querySelector('h2 + p').textContent=bankSize+' questions · 5 choices each · Shuffled each attempt · Immediate marking · Explanations on demand';
   const el=name=>root.querySelector('#quiz320-'+name);
   const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const fresh=()=>({format:'320quiz',quizKey,index:0,answers:Array(total).fill(null),tab:'quiz'});
+  // Seeded PRNG (mulberry32) so question order and option order are reproducible from state.
+  const rng=seed=>()=>{seed=(seed+0x6D2B79F5)|0;let t=Math.imul(seed^seed>>>15,1|seed);t=(t+Math.imul(t^t>>>7,61|t))^t;return((t^t>>>14)>>>0)/4294967296;};
+  const shuffle=(list,random)=>{const out=list.slice();for(let i=out.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[out[i],out[j]]=[out[j],out[i]];}return out;};
+  const newSeed=()=>(Math.random()*4294967296)>>>0;
+  // Each attempt presents a pool of bank indices in a shuffled order; answers hold the ORIGINAL option index.
+  const fresh=(pool=questions.map((q,i)=>i),seed=newSeed())=>({format:'320quiz',quizKey,seed,items:shuffle(pool,rng(seed)),answers:Array(pool.length).fill(null),index:0,tab:'quiz'});
   let state=fresh();
-  const valid=s=>s?.format==='320quiz' && s.quizKey===quizKey && Number.isInteger(s.index) && s.index>=0 && s.index<total && Array.isArray(s.answers) && s.answers.length===total && s.answers.every(a=>a===null || Number.isInteger(a)&&a>=0&&a<5) && ['quiz','results'].includes(s.tab);
+  const valid=s=>s?.format==='320quiz' && s.quizKey===quizKey && Number.isInteger(s.seed) && Array.isArray(s.items) && s.items.length>0 && s.items.every(i=>Number.isInteger(i)&&i>=0&&i<bankSize) && Number.isInteger(s.index) && s.index>=0 && s.index<s.items.length && Array.isArray(s.answers) && s.answers.length===s.items.length && s.answers.every(a=>a===null || Number.isInteger(a)&&a>=0&&a<5) && ['quiz','results'].includes(s.tab);
+  const total=()=>state.items.length;
+  const qAt=k=>questions[state.items[k]];
+  // Option permutation for item k: perm[displayPosition] = original option index.
+  const perm=k=>shuffle([0,1,2,3,4],rng((state.seed^Math.imul(state.items[k]+1,2654435761))>>>0));
+  const letter=(k,original)=>'ABCDE'[perm(k).indexOf(original)];
   const count=()=>state.answers.filter(a=>a!==null).length;
-  const score=()=>questions.filter((q,i)=>state.answers[i]===q.answer).length;
+  const isCorrect=k=>state.answers[k]===qAt(k).answer;
+  const score=()=>state.items.filter((_,k)=>isCorrect(k)).length;
+  const correctItems=()=>state.items.map((_,k)=>k).filter(k=>isCorrect(k));
+  const missedItems=()=>state.items.map((_,k)=>k).filter(k=>state.answers[k]!==null&&!isCorrect(k));
   const canExplain=()=>typeof window.openai?.sendFollowUpMessage==='function'&&!document.documentElement.hasAttribute('data-visualize-standalone');
   function save(){
-    if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:{format:state.format,answered:count(),total,correct:score(),firstChoiceLocked:true,correctTopics:[...new Set(questions.filter((q,i)=>state.answers[i]===q.answer).map(q=>q.correctSkill))],missedTopics:[...new Set(questions.filter((q,i)=>state.answers[i]!==null&&state.answers[i]!==q.answer).map(q=>q.topic))]},privateContent:state}).catch(()=>{});
+    if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:{format:state.format,answered:count(),total:total(),bankSize,correct:score(),firstChoiceLocked:true,shuffled:true,correctTopics:[...new Set(correctItems().map(k=>qAt(k).correctSkill))],missedTopics:[...new Set(missedItems().map(k=>qAt(k).topic))]},privateContent:state}).catch(()=>{});
   }
   function diagram(d){
     const tables=d.tables.map(table=>`<table class="table table-sm"><caption>${esc(table.label)}</caption><thead><tr>${table.columns.map(column=>`<th scope="col">${esc(column)}</th>`).join('')}</tr></thead><tbody>${table.rows.map(row=>`<tr>${row.map(cell=>`<td class="tabular-nums">${esc(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table>`).join('');
     return `<div class="quiz320-space"><p class="quiz320-status">${esc(d.label)}</p>${d.notes?`<p>${esc(d.notes)}</p>`:''}<div class="quiz320-tables">${tables}</div>${d.source?`<p class="text-small text-muted">${esc(d.source)}</p>`:''}</div>`;
   }
-  function feedback(q,answer,index){
+  function feedback(k){
+    const q=qAt(k),answer=state.answers[k],index=k;
     const correct=answer===q.answer;
-    return `<div class="quiz320-space"><p class="quiz320-status">${correct?'Correct.':'Incorrect.'} Correct answer: ${'ABCDE'[q.answer]}. ${esc(q.options[q.answer])}</p><p class="text-small text-muted">Source: ${esc(q.source)}</p><button class="btn" type="button" data-explain="${index}">Explain this answer</button><div class="text-small" data-request-status aria-live="polite"></div></div>`;
+    return `<div class="quiz320-space"><p class="quiz320-status">${correct?'Correct.':'Incorrect.'} Correct answer: ${letter(k,q.answer)}. ${esc(q.options[q.answer])}</p><p class="text-small text-muted">Source: ${esc(q.source)}</p><button class="btn" type="button" data-explain="${index}">Explain this answer</button><div class="text-small" data-request-status aria-live="polite"></div></div>`;
   }
-  function group(qs){const groups=new Map();for(const q of qs){const topic=q.reviewGroup||q.correctSkill||q.topic;const g=groups.get(topic)||{topic,count:0,q};g.count++;groups.set(topic,g);}return [...groups.values()].sort((a,b)=>b.count-a.count);}
+  function group(ks){const groups=new Map();for(const k of ks){const q=qAt(k);const topic=q.reviewGroup||q.correctSkill||q.topic;const g=groups.get(topic)||{topic,count:0,k};g.count++;groups.set(topic,g);}return [...groups.values()].sort((a,b)=>b.count-a.count);}
   function overview(){
-    const correct=questions.filter((q,i)=>state.answers[i]===q.answer);
-    const missed=questions.filter((q,i)=>state.answers[i]!==q.answer);
+    const correct=correctItems();
+    const missed=missedItems();
     const rightOverview=correct.length?group(correct).slice(0,3).map(g=>g.topic+' ('+g.count+' correct)').join('; ')+'.':'No correct answers in this attempt.';
     const wrongOverview=missed.length?group(missed).slice(0,3).map(g=>g.topic+' ('+g.count+' missed)').join('; ')+'.':'No incorrect answers in this attempt.';
     const improveOverview=missed.length?'Prioritize revisiting: '+group(missed).slice(0,3).map(g=>g.topic).join('; ')+'.':'All questions were correct. Try a harder check of the concepts you answered correctly.';
     return `<div class="quiz320-space"><h3>Quick overview</h3><p><span class="quiz320-status">What was correct:</span> ${esc(rightOverview)}</p><p><span class="quiz320-status">What was wrong:</span> ${esc(wrongOverview)}</p><p><span class="quiz320-status">What to improve:</span> ${esc(improveOverview)}</p><p class="text-small text-muted">Based on this attempt only.</p></div>`;
   }
-  function context(index){
-    const q=questions[index],chosen=state.answers[index];
-    return {questionNumber:index+1,id:q.id,topic:q.topic,question:q.q,options:q.options.map((text,i)=>({label:'ABCDE'[i],text})),selected:chosen===null?null:{label:'ABCDE'[chosen],text:q.options[chosen]},answerKey:{label:'ABCDE'[q.answer],text:q.options[q.answer]},code:q.code||null,diagram:q.diagram||null,source:q.source};
+  function context(k){
+    const q=qAt(k),chosen=state.answers[k],order=perm(k);
+    return {questionNumber:k+1,id:q.id,topic:q.topic,question:q.q,options:order.map((original,i)=>({label:'ABCDE'[i],text:q.options[original]})),selected:chosen===null?null:{label:letter(k,chosen),text:q.options[chosen]},answerKey:{label:letter(k,q.answer),text:q.options[q.answer]},code:q.code||null,diagram:q.diagram||null,source:q.source};
   }
   async function requestExplanation(button,index){
-    if(index!==null&&(!Number.isInteger(index)||index<0||index>=total||state.answers[index]===null))return;
+    if(index!==null&&(!Number.isInteger(index)||index<0||index>=total()||state.answers[index]===null))return;
     const status=index===null?el('explanation-status'):button.parentElement.querySelector('[data-request-status]');
-    const correct=questions.filter((q,i)=>state.answers[i]===q.answer),missed=questions.filter((q,i)=>state.answers[i]!==null&&state.answers[i]!==q.answer);
+    const correct=correctItems(),missed=missedItems();
     const priorities=group(missed.length?missed:correct).slice(0,3);
     const instruction=index===null?'Explain these CSE 320 quiz results in chat. Report actual strengths and mistakes without inventing private reasoning. Use the supplied priority examples, explain the correct and selected wrong answer where applicable, and give at most three prioritized practice steps. If there were no mistakes, offer a harder check.':'Explain this CSE 320 quiz answer in chat. Explain why the correct answer is correct. If the selected answer is wrong, explain only that selected option’s specific flaw and give one concrete practice step. If it is correct, identify what it gets right and suggest a small next challenge. Do not explain other unselected distractors unless asked.';
-    const payload=index===null?{answered:count(),total,correct:score(),correctGroups:group(correct).map(({topic,count})=>({topic,count})),missedGroups:group(missed).map(({topic,count})=>({topic,count})),priorityExamples:priorities.map(g=>context(questions.indexOf(g.q)))}:context(index);
+    const payload=index===null?{answered:count(),total:total(),correct:score(),correctGroups:group(correct).map(({topic,count})=>({topic,count})),missedGroups:group(missed).map(({topic,count})=>({topic,count})),priorityExamples:priorities.map(g=>context(g.k))}:context(index);
     const prompt=instruction+' Verify the answer calculation and source support before explaining. Report any answer-key error.\n\nQuiz context:\n'+JSON.stringify(payload,null,2);
     if(!canExplain()){
       showCopyPrompt(status,prompt);
@@ -145,44 +159,49 @@
     field.select();
   }
   function renderQuestion(){
-    const q=questions[state.index],answer=state.answers[state.index];
+    const k=state.index,q=qAt(k),answer=state.answers[k],order=perm(k);
     el('topic').textContent=q.topic;
-    el('question').innerHTML=`<h3>Question ${state.index+1} of ${total}</h3>${q.diagram?diagram(q.diagram):''}<p>${esc(q.q)}</p>${q.code?`<pre class="quiz320-code"><code>${esc(q.code)}</code></pre>`:''}<fieldset class="quiz320-options"><legend class="sr-only">Select one of five answers</legend>${q.options.map((option,i)=>`<label class="form-check"><input class="form-check-input" type="radio" name="quiz320-answer" value="${i}" ${i===answer?'checked':''} ${answer!==null?'disabled':''}><span class="form-check-label">${'ABCDE'[i]}. ${esc(option)}${answer!==null&&i===q.answer?' <span class="quiz320-status">— Correct answer</span>':''}${answer!==null&&i===answer&&answer!==q.answer?' <span class="quiz320-status">— Your answer</span>':''}</span></label>`).join('')}</fieldset>`;
-    el('feedback').innerHTML=answer===null?'':feedback(q,answer,state.index);
+    el('question').innerHTML=`<h3>Question ${k+1} of ${total()}</h3>${q.diagram?diagram(q.diagram):''}<p>${esc(q.q)}</p>${q.code?`<pre class="quiz320-code"><code>${esc(q.code)}</code></pre>`:''}<fieldset class="quiz320-options"><legend class="sr-only">Select one of five answers</legend>${order.map((original,i)=>`<label class="form-check"><input class="form-check-input" type="radio" name="quiz320-answer" value="${original}" ${original===answer?'checked':''} ${answer!==null?'disabled':''}><span class="form-check-label">${'ABCDE'[i]}. ${esc(q.options[original])}${answer!==null&&original===q.answer?' <span class="quiz320-status">— Correct answer</span>':''}${answer!==null&&original===answer&&answer!==q.answer?' <span class="quiz320-status">— Your answer</span>':''}</span></label>`).join('')}</fieldset>`;
+    el('feedback').innerHTML=answer===null?'':feedback(k);
     root.querySelectorAll('input[name="quiz320-answer"]').forEach(input=>input.addEventListener('change',()=>{
       if(state.answers[state.index]!==null)return;
       state.answers[state.index]=Number(input.value);
       render();save();
     }));
-    el('prev').disabled=state.index===0;
-    el('next').textContent=state.index===total-1&&count()===total?'View overview':'Next';
-    el('next').disabled=state.index===total-1&&count()!==total;
+    el('prev').disabled=k===0;
+    el('next').textContent=k===total()-1&&count()===total()?'View overview':'Next';
+    el('next').disabled=k===total()-1&&count()!==total();
   }
   function render(){
-    el('count').textContent=count()+' / '+total+' answered'+(count()===total?' · '+score()+' / '+total+' correct':'');
-    el('progress').setAttribute('aria-valuemax',total);
+    const n=total(),done=count()===n;
+    el('count').textContent=count()+' / '+n+' answered'+(done?' · '+score()+' / '+n+' correct':'');
+    el('progress').setAttribute('aria-valuemax',n);
     el('progress').setAttribute('aria-valuenow',count());
-    el('progress').firstElementChild.style.width=(count()/total*100)+'%';
-    el('results-tab').disabled=count()!==total;
-    if(state.tab==='results'&&count()!==total)state.tab='quiz';
+    el('progress').firstElementChild.style.width=(count()/n*100)+'%';
+    el('results-tab').disabled=!done;
+    if(state.tab==='results'&&!done)state.tab='quiz';
     const results=state.tab==='results';
     el('test').hidden=results;el('results').hidden=!results;
     el('test-tab').classList.toggle('active',!results);el('results-tab').classList.toggle('active',results);
     el('test-tab').setAttribute('aria-selected',String(!results));el('results-tab').setAttribute('aria-selected',String(results));
     renderQuestion();
-    if(count()===total){
-      el('score').textContent=score()+' / '+total+' correct · '+Math.round(score()/total*100)+'%';
+    if(done){
+      const missed=missedItems();
+      el('score').textContent=score()+' / '+n+' correct · '+Math.round(score()/n*100)+'%'+(n<bankSize?' · Retry of '+n+' missed questions':'');
       el('overview').innerHTML=overview();
-      el('review').innerHTML=questions.map((q,i)=>`<details class="quiz320-review-item"><summary>Question ${i+1} · ${state.answers[i]===q.answer?'Correct':'Incorrect'} · ${esc(q.topic)}</summary>${q.diagram?diagram(q.diagram):''}<p>${esc(q.q)}</p>${q.code?`<pre class="quiz320-code"><code>${esc(q.code)}</code></pre>`:''}<p>Your answer: ${'ABCDE'[state.answers[i]]}. ${esc(q.options[state.answers[i]])}</p>${feedback(q,state.answers[i],i)}</details>`).join('');
+      el('review').innerHTML=state.items.map((_,k)=>{const q=qAt(k);return `<details class="quiz320-review-item"><summary>Question ${k+1} · ${isCorrect(k)?'Correct':'Incorrect'} · ${esc(q.topic)}</summary>${q.diagram?diagram(q.diagram):''}<p>${esc(q.q)}</p>${q.code?`<pre class="quiz320-code"><code>${esc(q.code)}</code></pre>`:''}<p>Your answer: ${letter(k,state.answers[k])}. ${esc(q.options[state.answers[k]])}</p>${feedback(k)}</details>`;}).join('');
+      el('retry-missed').disabled=missed.length===0;
+      el('retry-missed').textContent=missed.length?'Retry missed ('+missed.length+')':'Retry missed';
     }
   }
   function restore(snapshot){if(valid(snapshot?.privateContent))state=JSON.parse(JSON.stringify(snapshot.privateContent));render();}
   el('prev').addEventListener('click',()=>{if(state.index>0){state.index--;render();save();}});
-  el('next').addEventListener('click',()=>{if(state.index<total-1)state.index++;else if(count()===total)state.tab='results';render();save();});
+  el('next').addEventListener('click',()=>{if(state.index<total()-1)state.index++;else if(count()===total())state.tab='results';render();save();});
   el('test-tab').addEventListener('click',()=>{state.tab='quiz';render();save();});
-  el('results-tab').addEventListener('click',()=>{if(count()===total){state.tab='results';render();save();}});
+  el('results-tab').addEventListener('click',()=>{if(count()===total()){state.tab='results';render();save();}});
   el('retry').addEventListener('click',()=>{state=fresh();el('explanation-status').textContent='';render();save();});
-  el('explain-results').addEventListener('click',event=>{if(count()===total)requestExplanation(event.currentTarget,null);});
+  el('retry-missed').addEventListener('click',()=>{const missed=[...new Set(missedItems().map(k=>state.items[k]))];if(!missed.length)return;state=fresh(missed);el('explanation-status').textContent='';render();save();});
+  el('explain-results').addEventListener('click',event=>{if(count()===total())requestExplanation(event.currentTarget,null);});
   root.addEventListener('click',event=>{const button=event.target.closest('button[data-explain]');if(button&&root.contains(button))requestExplanation(button,Number(button.dataset.explain));});
   window.addEventListener('openai:set_globals',event=>{const snapshot=event.detail?.globals?.widgetState;if(snapshot&&JSON.stringify(snapshot.privateContent)!==JSON.stringify(state))restore(snapshot);});
   restore(window.openai?.widgetState);

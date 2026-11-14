@@ -23,7 +23,7 @@ Use the same representation for caches, TLB sets, page tables, or heap blocks. F
 
 ## Close choices
 
-- Keep choices parallel in phrasing, units, and level of detail. Move the correct position across the bank and update the key when shuffling.
+- Keep choices parallel in phrasing, units, and level of detail. The template shuffles option order on every attempt, so `answer` always refers to the position in the authored `options` array; do not hand-rotate the correct position.
 - Derive numeric distractors from realistic errors. In a page walk, retain the offset but use the wrong frame, swap index fields, or mistake a non-present entry for a mapping. In a cache problem, vary the tag, set, and valid-bit checks.
 - For code, vary one return value, event ordering, iteration count, or side effect at a time. Specify success, buffering, scheduling, and input assumptions when they matter. When identifying undefined behavior, ask for the defect or repair instead of predicting its output.
 - For terms, pull adjacent concepts from the exam's pool. For homework, vary the documented responsibilities of nearby functions or workflow stages.
