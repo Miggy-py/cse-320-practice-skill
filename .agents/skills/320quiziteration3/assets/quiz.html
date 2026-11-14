@@ -1,0 +1,190 @@
+<div id="quiz320-preview">
+  <h2>CSE 320 · Practice quiz</h2>
+  <p class="text-muted">2 questions · 5 choices each · Immediate marking · Explanations on demand</p>
+  <div class="nav nav-pills" role="tablist" aria-label="Quiz preview">
+    <button class="nav-link active" id="quiz320-test-tab" type="button" role="tab" aria-controls="quiz320-test" aria-selected="true">Quiz</button>
+    <button class="nav-link" id="quiz320-results-tab" type="button" role="tab" aria-controls="quiz320-results" aria-selected="false" disabled>Results</button>
+  </div>
+  <div id="quiz320-test" role="tabpanel" aria-labelledby="quiz320-test-tab">
+    <div class="viz-row quiz320-space"><span id="quiz320-count" class="tabular-nums"></span><span id="quiz320-topic" class="viz-badge"></span></div>
+    <div id="quiz320-progress" class="progress" role="progressbar" aria-label="Questions answered" aria-valuemin="0" aria-valuemax="2" aria-valuenow="0"><div class="progress-bar" style="width:0%"></div></div>
+    <div id="quiz320-question"></div>
+    <div id="quiz320-feedback" aria-live="polite" aria-atomic="true"></div>
+    <div class="viz-row quiz320-space"><button id="quiz320-prev" class="btn" type="button">Previous</button><button id="quiz320-next" class="btn btn-primary" type="button">Next</button></div>
+  </div>
+  <div id="quiz320-results" role="tabpanel" aria-labelledby="quiz320-results-tab" hidden>
+    <h3 id="quiz320-score"></h3>
+    <div id="quiz320-overview" aria-live="polite"></div>
+    <div class="viz-row quiz320-space"><button id="quiz320-explain-results" class="btn" type="button">Explain my results</button></div>
+    <div id="quiz320-explanation-status" class="text-small" aria-live="polite"></div>
+    <div id="quiz320-review"></div>
+    <div class="viz-row quiz320-space"><button id="quiz320-retry" class="btn btn-primary" type="button">Try again</button></div>
+  </div>
+</div>
+<style>
+#quiz320-preview .quiz320-space{margin:16px 0}
+#quiz320-preview .quiz320-options{display:flex;flex-direction:column;gap:16px;margin:20px 0;padding:0;border:0;min-width:0}
+#quiz320-preview .quiz320-code{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--foreground)}
+#quiz320-preview .quiz320-tables{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,295px),1fr));align-items:start;gap:12px 20px;margin:12px 0}
+#quiz320-preview .quiz320-tables table{margin:0}
+#quiz320-preview .quiz320-tables caption{text-align:left;font-weight:500}
+#quiz320-preview .quiz320-tables th,#quiz320-preview .quiz320-tables td{overflow-wrap:anywhere}
+#quiz320-preview .quiz320-status{font-weight:500;color:var(--foreground)}
+#quiz320-preview .quiz320-review-item{padding:16px 0;border-bottom:1px solid var(--border)}
+</style>
+<script type="application/json" id="quiz320-preview-bank">
+[
+  {
+    "id": "cache-bits",
+    "topic": "Cache · Address bits",
+    "q": "A byte-addressed system uses 32-bit addresses. Its 2-way cache has 2,048 bytes of data capacity and 32-byte blocks. Which set count and tag/index/offset bit counts are correct?",
+    "options": [
+      "64 sets; tag 21, index 6, offset 5.",
+      "32 sets; tag 22, index 5, offset 5.",
+      "32 sets; tag 21, index 5, offset 5, plus 1 way-selection bit.",
+      "32 sets; tag 22, index 5, offset 32.",
+      "16 sets; tag 23, index 4, offset 5."
+    ],
+    "answer": 1,
+    "correctSkill": "Calculating sets and splitting address bits",
+    "source": "Template example · cache geometry"
+  },
+  {
+    "id": "side-effects",
+    "topic": "Basic code · Compiler optimizations",
+    "q": "Run each version separately, starting calls at 0. What are (sum, calls) after the original and the proposed replacement?",
+    "code": "int calls = 0;\nint next_value(void) { return ++calls; }\n\n/* Original */\nint sum = 0;\nfor (int i = 0; i < 4; i++)\n    sum += next_value();\n\n/* Proposed replacement */\nint sum = 0;\nint v = next_value();\nfor (int i = 0; i < 4; i++)\n    sum += v;",
+    "options": [
+      "Original (4, 4); replacement (4, 1).",
+      "Original (10, 4); replacement (10, 1).",
+      "Original (10, 4); replacement (4, 1).",
+      "Original (6, 3); replacement (3, 1).",
+      "Both (10, 4), because the function has no parameters."
+    ],
+    "answer": 2,
+    "correctSkill": "Tracing function side effects before moving a call",
+    "source": "Template example · function side effects"
+  }
+]
+</script>
+<script>
+(() => {
+  const root=document.getElementById('quiz320-preview');
+  const questions=JSON.parse(document.getElementById('quiz320-preview-bank').textContent);
+  const total=questions.length;
+  let signature=2166136261;
+  for(const char of JSON.stringify(questions))signature=Math.imul(signature^char.charCodeAt(0),16777619);
+  const quizKey=(signature>>>0).toString(36);
+  root.querySelector('h2 + p').textContent=total+' questions · 5 choices each · Immediate marking · Explanations on demand';
+  const el=name=>root.querySelector('#quiz320-'+name);
+  const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const fresh=()=>({format:'320quiziteration3',quizKey,index:0,answers:Array(total).fill(null),tab:'quiz'});
+  let state=fresh();
+  const valid=s=>s?.format==='320quiziteration3' && s.quizKey===quizKey && Number.isInteger(s.index) && s.index>=0 && s.index<total && Array.isArray(s.answers) && s.answers.length===total && s.answers.every(a=>a===null || Number.isInteger(a)&&a>=0&&a<5) && ['quiz','results'].includes(s.tab);
+  const count=()=>state.answers.filter(a=>a!==null).length;
+  const score=()=>questions.filter((q,i)=>state.answers[i]===q.answer).length;
+  const canExplain=()=>typeof window.openai?.sendFollowUpMessage==='function'&&!document.documentElement.hasAttribute('data-visualize-standalone');
+  function save(){
+    if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:{format:state.format,answered:count(),total,correct:score(),firstChoiceLocked:true,correctTopics:[...new Set(questions.filter((q,i)=>state.answers[i]===q.answer).map(q=>q.correctSkill))],missedTopics:[...new Set(questions.filter((q,i)=>state.answers[i]!==null&&state.answers[i]!==q.answer).map(q=>q.topic))]},privateContent:state}).catch(()=>{});
+  }
+  function diagram(d){
+    const tables=d.tables.map(table=>`<table class="table table-sm"><caption>${esc(table.label)}</caption><thead><tr>${table.columns.map(column=>`<th scope="col">${esc(column)}</th>`).join('')}</tr></thead><tbody>${table.rows.map(row=>`<tr>${row.map(cell=>`<td class="tabular-nums">${esc(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table>`).join('');
+    return `<div class="quiz320-space"><p class="quiz320-status">${esc(d.label)}</p>${d.notes?`<p>${esc(d.notes)}</p>`:''}<div class="quiz320-tables">${tables}</div>${d.source?`<p class="text-small text-muted">${esc(d.source)}</p>`:''}</div>`;
+  }
+  function feedback(q,answer,index){
+    const correct=answer===q.answer;
+    return `<div class="quiz320-space"><p class="quiz320-status">${correct?'Correct.':'Incorrect.'} Correct answer: ${'ABCDE'[q.answer]}. ${esc(q.options[q.answer])}</p><p class="text-small text-muted">Source: ${esc(q.source)}</p><button class="btn" type="button" data-explain="${index}">Explain this answer</button><div class="text-small" data-request-status aria-live="polite"></div></div>`;
+  }
+  function group(qs){const groups=new Map();for(const q of qs){const topic=q.reviewGroup||q.correctSkill||q.topic;const g=groups.get(topic)||{topic,count:0,q};g.count++;groups.set(topic,g);}return [...groups.values()].sort((a,b)=>b.count-a.count);}
+  function overview(){
+    const correct=questions.filter((q,i)=>state.answers[i]===q.answer);
+    const missed=questions.filter((q,i)=>state.answers[i]!==q.answer);
+    const rightOverview=correct.length?group(correct).slice(0,3).map(g=>g.topic+' ('+g.count+' correct)').join('; ')+'.':'No correct answers in this attempt.';
+    const wrongOverview=missed.length?group(missed).slice(0,3).map(g=>g.topic+' ('+g.count+' missed)').join('; ')+'.':'No incorrect answers in this attempt.';
+    const improveOverview=missed.length?'Prioritize revisiting: '+group(missed).slice(0,3).map(g=>g.topic).join('; ')+'.':'All questions were correct. Try a harder check of the concepts you answered correctly.';
+    return `<div class="quiz320-space"><h3>Quick overview</h3><p><span class="quiz320-status">What was correct:</span> ${esc(rightOverview)}</p><p><span class="quiz320-status">What was wrong:</span> ${esc(wrongOverview)}</p><p><span class="quiz320-status">What to improve:</span> ${esc(improveOverview)}</p><p class="text-small text-muted">Based on this attempt only.</p></div>`;
+  }
+  function context(index){
+    const q=questions[index],chosen=state.answers[index];
+    return {questionNumber:index+1,id:q.id,topic:q.topic,question:q.q,options:q.options.map((text,i)=>({label:'ABCDE'[i],text})),selected:chosen===null?null:{label:'ABCDE'[chosen],text:q.options[chosen]},answerKey:{label:'ABCDE'[q.answer],text:q.options[q.answer]},code:q.code||null,diagram:q.diagram||null,source:q.source};
+  }
+  async function requestExplanation(button,index){
+    if(index!==null&&(!Number.isInteger(index)||index<0||index>=total||state.answers[index]===null))return;
+    const status=index===null?el('explanation-status'):button.parentElement.querySelector('[data-request-status]');
+    const correct=questions.filter((q,i)=>state.answers[i]===q.answer),missed=questions.filter((q,i)=>state.answers[i]!==null&&state.answers[i]!==q.answer);
+    const priorities=group(missed.length?missed:correct).slice(0,3);
+    const instruction=index===null?'Explain these CSE 320 quiz results in chat. Report actual strengths and mistakes without inventing private reasoning. Use the supplied priority examples, explain the correct and selected wrong answer where applicable, and give at most three prioritized practice steps. If there were no mistakes, offer a harder check.':'Explain this CSE 320 quiz answer in chat. Explain why the correct answer is correct. If the selected answer is wrong, explain only that selected option’s specific flaw and give one concrete practice step. If it is correct, identify what it gets right and suggest a small next challenge. Do not explain other unselected distractors unless asked.';
+    const payload=index===null?{answered:count(),total,correct:score(),correctGroups:group(correct).map(({topic,count})=>({topic,count})),missedGroups:group(missed).map(({topic,count})=>({topic,count})),priorityExamples:priorities.map(g=>context(questions.indexOf(g.q)))}:context(index);
+    const prompt=instruction+' Verify the answer calculation and source support before explaining. Report any answer-key error.\n\nQuiz context:\n'+JSON.stringify(payload,null,2);
+    if(!canExplain()){
+      showCopyPrompt(status,prompt);
+      return;
+    }
+    button.disabled=true;
+    if(status)status.textContent='Requesting explanation in chat…';
+    try{
+      await window.openai.sendFollowUpMessage({title:index===null?'Explain my quiz results':'Explain Question '+(index+1),prompt});
+      if(status)status.textContent='Explanation requested in chat.';
+    }catch{
+      showCopyPrompt(status,prompt);
+    }finally{button.disabled=false;}
+  }
+  function showCopyPrompt(status,prompt){
+    if(!status)return;
+    const label=document.createElement('label');
+    label.className='form-label';
+    label.textContent='Copy this prompt into Codex to get an explanation.';
+    const field=document.createElement('textarea');
+    field.className='form-control';
+    field.rows=4;
+    field.readOnly=true;
+    field.value=prompt;
+    label.append(field);
+    status.replaceChildren(label);
+    field.focus();
+    field.select();
+  }
+  function renderQuestion(){
+    const q=questions[state.index],answer=state.answers[state.index];
+    el('topic').textContent=q.topic;
+    el('question').innerHTML=`<h3>Question ${state.index+1} of ${total}</h3>${q.diagram?diagram(q.diagram):''}<p>${esc(q.q)}</p>${q.code?`<pre class="quiz320-code"><code>${esc(q.code)}</code></pre>`:''}<fieldset class="quiz320-options"><legend class="sr-only">Select one of five answers</legend>${q.options.map((option,i)=>`<label class="form-check"><input class="form-check-input" type="radio" name="quiz320-answer" value="${i}" ${i===answer?'checked':''} ${answer!==null?'disabled':''}><span class="form-check-label">${'ABCDE'[i]}. ${esc(option)}${answer!==null&&i===q.answer?' <span class="quiz320-status">— Correct answer</span>':''}${answer!==null&&i===answer&&answer!==q.answer?' <span class="quiz320-status">— Your answer</span>':''}</span></label>`).join('')}</fieldset>`;
+    el('feedback').innerHTML=answer===null?'':feedback(q,answer,state.index);
+    root.querySelectorAll('input[name="quiz320-answer"]').forEach(input=>input.addEventListener('change',()=>{
+      if(state.answers[state.index]!==null)return;
+      state.answers[state.index]=Number(input.value);
+      render();save();
+    }));
+    el('prev').disabled=state.index===0;
+    el('next').textContent=state.index===total-1&&count()===total?'View overview':'Next';
+    el('next').disabled=state.index===total-1&&count()!==total;
+  }
+  function render(){
+    el('count').textContent=count()+' / '+total+' answered'+(count()===total?' · '+score()+' / '+total+' correct':'');
+    el('progress').setAttribute('aria-valuemax',total);
+    el('progress').setAttribute('aria-valuenow',count());
+    el('progress').firstElementChild.style.width=(count()/total*100)+'%';
+    el('results-tab').disabled=count()!==total;
+    if(state.tab==='results'&&count()!==total)state.tab='quiz';
+    const results=state.tab==='results';
+    el('test').hidden=results;el('results').hidden=!results;
+    el('test-tab').classList.toggle('active',!results);el('results-tab').classList.toggle('active',results);
+    el('test-tab').setAttribute('aria-selected',String(!results));el('results-tab').setAttribute('aria-selected',String(results));
+    renderQuestion();
+    if(count()===total){
+      el('score').textContent=score()+' / '+total+' correct · '+Math.round(score()/total*100)+'%';
+      el('overview').innerHTML=overview();
+      el('review').innerHTML=questions.map((q,i)=>`<details class="quiz320-review-item"><summary>Question ${i+1} · ${state.answers[i]===q.answer?'Correct':'Incorrect'} · ${esc(q.topic)}</summary>${q.diagram?diagram(q.diagram):''}<p>${esc(q.q)}</p>${q.code?`<pre class="quiz320-code"><code>${esc(q.code)}</code></pre>`:''}<p>Your answer: ${'ABCDE'[state.answers[i]]}. ${esc(q.options[state.answers[i]])}</p>${feedback(q,state.answers[i],i)}</details>`).join('');
+    }
+  }
+  function restore(snapshot){if(valid(snapshot?.privateContent))state=JSON.parse(JSON.stringify(snapshot.privateContent));render();}
+  el('prev').addEventListener('click',()=>{if(state.index>0){state.index--;render();save();}});
+  el('next').addEventListener('click',()=>{if(state.index<total-1)state.index++;else if(count()===total)state.tab='results';render();save();});
+  el('test-tab').addEventListener('click',()=>{state.tab='quiz';render();save();});
+  el('results-tab').addEventListener('click',()=>{if(count()===total){state.tab='results';render();save();}});
+  el('retry').addEventListener('click',()=>{state=fresh();el('explanation-status').textContent='';render();save();});
+  el('explain-results').addEventListener('click',event=>{if(count()===total)requestExplanation(event.currentTarget,null);});
+  root.addEventListener('click',event=>{const button=event.target.closest('button[data-explain]');if(button&&root.contains(button))requestExplanation(button,Number(button.dataset.explain));});
+  window.addEventListener('openai:set_globals',event=>{const snapshot=event.detail?.globals?.widgetState;if(snapshot&&JSON.stringify(snapshot.privateContent)!==JSON.stringify(state))restore(snapshot);});
+  restore(window.openai?.widgetState);
+})();
+</script>
