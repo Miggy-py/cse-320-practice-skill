@@ -15,7 +15,7 @@
   <div id="quiz320-results" role="tabpanel" aria-labelledby="quiz320-results-tab" hidden>
     <h3 id="quiz320-score"></h3>
     <div id="quiz320-overview" aria-live="polite"></div>
-    <div class="viz-row quiz320-space"><button id="quiz320-explain-results" class="btn" type="button">Explain my results</button></div>
+    <div class="viz-row quiz320-space"><button id="quiz320-explain-results" class="btn" type="button">Explain my results</button><button id="quiz320-practice-missed" class="btn" type="button">Practice what I missed</button></div>
     <div id="quiz320-explanation-status" class="text-small" aria-live="polite"></div>
     <div id="quiz320-review"></div>
     <div class="viz-row quiz320-space"><button id="quiz320-retry-missed" class="btn" type="button">Retry missed</button><button id="quiz320-retry" class="btn btn-primary" type="button">Try again</button></div>
@@ -148,18 +148,30 @@
     const instruction=index===null?'Explain these CSE 320 quiz results in chat. Report actual strengths and mistakes without inventing private reasoning. Use the supplied priority examples, explain the correct and selected wrong answer where applicable, and give at most three prioritized practice steps. If there were no mistakes, offer a harder check.':'Explain this CSE 320 quiz answer in chat. Explain why the correct answer is correct. If the selected answer is wrong, explain only that selected option’s specific flaw and give one concrete practice step. If it is correct, identify what it gets right and suggest a small next challenge. Do not explain other unselected distractors unless asked.';
     const payload=index===null?{answered:count(),total:total(),correct:score(),correctGroups:group(correct).map(({topic,count})=>({topic,count})),missedGroups:group(missed).map(({topic,count})=>({topic,count})),priorityExamples:priorities.map(g=>context(g.k))}:context(index);
     const prompt=instruction+' Verify the answer calculation and source support before explaining. Report any answer-key error.\n\nQuiz context:\n'+JSON.stringify(payload,null,2);
+    await sendFollowUp(button,status,index===null?'Explain my quiz results':'Explain Question '+(index+1),prompt);
+  }
+  async function sendFollowUp(button,status,title,prompt){
     if(!canExplain()){
       showCopyPrompt(status,prompt);
       return;
     }
     button.disabled=true;
-    if(status)status.textContent='Requesting explanation in chat…';
+    if(status)status.textContent='Sending to chat…';
     try{
-      await window.openai.sendFollowUpMessage({title:index===null?'Explain my quiz results':'Explain Question '+(index+1),prompt});
-      if(status)status.textContent='Explanation requested in chat.';
+      await window.openai.sendFollowUpMessage({title,prompt});
+      if(status)status.textContent='Sent to chat. Continue there.';
     }catch{
       showCopyPrompt(status,prompt);
     }finally{button.disabled=false;}
+  }
+  // Follow-up quiz request: near-transfer variants of what was missed, weighted toward the missed groups.
+  async function requestPractice(button){
+    const missed=missedItems();
+    if(count()!==total()||!missed.length)return;
+    const still=missed.filter(k=>!recovered(k));
+    const instruction='Build a follow-up CSE 320 practice quiz with the same skill and template as this one. Weight it toward the missed groups below, with the groups still missed after re-ask first. For each missed question write one or two near-transfer variants: keep the skill being tested, change the numbers, addresses, code values, or event ordering, and do not reuse the stems or answer texts. Keep five close choices per question, verify every key, and include a few questions from the groups answered correctly so the learner still has to switch between skills. Say which original question each variant practices.';
+    const payload={bankSize,correctOnFirstAttempt:score(),missedGroups:group(missed).map(({topic,count})=>({topic,count})),stillMissedAfterReask:group(still).map(({topic,count})=>({topic,count})),recoveredOnReask:recoveredItems().length,correctGroups:group(correctItems()).map(({topic,count})=>({topic,count})),missedQuestions:missed.map(k=>context(k))};
+    await sendFollowUp(button,el('explanation-status'),'Practice what I missed','Create a practice quiz from these CSE 320 results. '+instruction+'\n\nQuiz context:\n'+JSON.stringify(payload,null,2));
   }
   function showCopyPrompt(status,prompt){
     if(!status)return;
@@ -212,6 +224,7 @@
       el('overview').innerHTML=overview();
       el('review').innerHTML=firstItems().map(k=>{const q=qAt(k);const later=laterItems(k);const status=isCorrect(k)?'Correct':recovered(k)?'Incorrect · recovered on re-ask':later.length?'Incorrect · missed again on re-ask':'Incorrect';return `<details class="quiz320-review-item"><summary>Question ${k+1} · ${status} · ${esc(q.topic)}</summary>${q.diagram?diagram(q.diagram):''}<p>${esc(q.q)}</p>${q.code?`<pre class="quiz320-code"><code>${esc(q.code)}</code></pre>`:''}<p>Your answer: ${letter(k,state.answers[k])}. ${esc(q.options[state.answers[k]])}</p>${later.map(j=>`<p>Re-ask ${occurrence(j)}: ${letter(j,state.answers[j])}. ${esc(q.options[state.answers[j]])} · ${isCorrect(j)?'Correct':'Incorrect'}</p>`).join('')}${feedback(k)}</details>`;}).join('');
       el('retry-missed').disabled=missed.length===0;
+      el('practice-missed').disabled=missed.length===0;
       el('retry-missed').textContent=missed.length?'Retry missed ('+missed.length+')':'Retry missed';
     }
   }
@@ -223,6 +236,7 @@
   el('retry').addEventListener('click',()=>{state=fresh();el('explanation-status').textContent='';render();save();});
   el('retry-missed').addEventListener('click',()=>{const missed=[...new Set(missedItems().map(k=>state.items[k]))];if(!missed.length)return;state=fresh(missed);el('explanation-status').textContent='';render();save();});
   el('explain-results').addEventListener('click',event=>{if(count()===total())requestExplanation(event.currentTarget,null);});
+  el('practice-missed').addEventListener('click',event=>requestPractice(event.currentTarget));
   root.addEventListener('click',event=>{const button=event.target.closest('button[data-explain]');if(button&&root.contains(button))requestExplanation(button,Number(button.dataset.explain));});
   window.addEventListener('openai:set_globals',event=>{const snapshot=event.detail?.globals?.widgetState;if(snapshot&&JSON.stringify(snapshot.privateContent)!==JSON.stringify(state))restore(snapshot);});
   restore(window.openai?.widgetState);

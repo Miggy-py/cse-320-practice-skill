@@ -29,7 +29,7 @@ For the final, supply the final’s topic list and counts. If your instructor gi
 - Your first answer counts toward your score. You can move between questions with **Previous** and **Next**.
 - If you miss a question, it comes back a few questions later with the choices reshuffled. Getting it right then doesn't change your score, but the results show which misses you recovered and which you still need to study.
 - After answering, select **Explain this answer** to get help with that question.
-- Finish the quiz to see **Results** and what to practice next. Select **Retry missed** to redo only the questions you got wrong, or **Try again** for a fresh attempt. Questions and answer choices are reshuffled every attempt, so you can't rely on remembering "it was B."
+- Finish the quiz to see **Results** and what to practice next. Select **Practice what I missed** and Codex builds a new quiz with fresh variants of the questions you got wrong, so you practice the skill instead of memorizing the answers. Select **Retry missed** to redo only the questions you got wrong, or **Try again** for a fresh attempt. Questions and answer choices are reshuffled every attempt, so you can't rely on remembering "it was B."
 - If you want to study in a browser, ask Codex for a standalone HTML copy. Its explanation buttons give you a prompt to copy back into Codex.
 
 If the skill doesn’t appear, check that you opened the extracted project folder and then start a new Codex chat in that project. [Codex skill setup docs](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills)
