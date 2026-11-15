@@ -84,6 +84,8 @@
   let signature=2166136261;
   for(const char of JSON.stringify(questions))signature=Math.imul(signature^char.charCodeAt(0),16777619);
   const quizKey=(signature>>>0).toString(36);
+  const standalone=document.documentElement.hasAttribute('data-quiz-standalone');
+  const storageKey='320quiz:'+root.id+':'+quizKey;
   root.querySelector('h2 + p').textContent=bankSize+' questions · 5 choices each · Optional re-asks at the end · Explanations on demand';
   const el=name=>root.querySelector('#quiz320-'+name);
   const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -126,8 +128,16 @@
     state.items=indices.map(k=>state.items[k]);
     state.answers=indices.map(k=>state.answers[k]);
   }
-  const canExplain=()=>typeof window.openai?.sendFollowUpMessage==='function'&&!document.documentElement.hasAttribute('data-visualize-standalone');
+  const canExplain=()=>!standalone&&typeof window.openai?.sendFollowUpMessage==='function'&&!document.documentElement.hasAttribute('data-visualize-standalone');
+  function savedState(){
+    if(!standalone)return window.openai?.widgetState;
+    try{return {privateContent:JSON.parse(window.localStorage.getItem(storageKey))};}catch{return null;}
+  }
   function save(){
+    if(standalone){
+      try{window.localStorage.setItem(storageKey,JSON.stringify(state));}catch{}
+      return;
+    }
     if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:{format:state.format,answered:count(),total:total(),bankSize,correct:score(),firstAttemptQuestions:firstItems().length,reasks:reasks(),recovered:recoveredItems().length,skippedReasks:state.skippedReasks||0,firstChoiceLocked:true,shuffled:true,correctTopics:[...new Set(correctItems().map(k=>qAt(k).correctSkill))],missedTopics:[...new Set(missedItems().map(k=>qAt(k).topic))]},privateContent:state}).catch(()=>{});
   }
   function diagram(d){
@@ -212,7 +222,7 @@
     if(!status)return;
     const label=document.createElement('label');
     label.className='form-label';
-    label.textContent='Copy this prompt into Codex to get an explanation.';
+    label.textContent='Copy this prompt into your AI chat.';
     const field=document.createElement('textarea');
     field.className='form-control';
     field.rows=4;
@@ -300,7 +310,7 @@
   el('explain-results').addEventListener('click',event=>{if(count()===total())requestExplanation(event.currentTarget,null);});
   el('practice-missed').addEventListener('click',event=>requestPractice(event.currentTarget));
   root.addEventListener('click',event=>{const button=event.target.closest('button[data-explain]');if(button&&root.contains(button))requestExplanation(button,Number(button.dataset.explain));});
-  window.addEventListener('openai:set_globals',event=>{const snapshot=event.detail?.globals?.widgetState;if(snapshot&&JSON.stringify(snapshot.privateContent)!==JSON.stringify(state))restore(snapshot);});
-  restore(window.openai?.widgetState);
+  if(!standalone)window.addEventListener('openai:set_globals',event=>{const snapshot=event.detail?.globals?.widgetState;if(snapshot&&JSON.stringify(snapshot.privateContent)!==JSON.stringify(state))restore(snapshot);});
+  restore(savedState());
 })();
 </script>

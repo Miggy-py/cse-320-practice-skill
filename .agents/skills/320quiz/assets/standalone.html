@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en" data-quiz-standalone>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CSE 320 Practice Quiz</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --background: #fff;
+      --foreground: #202124;
+      --muted: #f2f3f5;
+      --muted-foreground: #525965;
+      --border: #cdd1d7;
+      --primary: #233e66;
+      --primary-foreground: #fff;
+      font-family: system-ui, sans-serif;
+      line-height: 1.5;
+      background: var(--background);
+      color: var(--foreground);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --background: #191b1f;
+        --foreground: #f1f2f4;
+        --muted: #2c3037;
+        --muted-foreground: #bac0ca;
+        --border: #525862;
+        --primary: #c8dafa;
+        --primary-foreground: #182b49;
+      }
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { max-width: 48rem; margin: 0 auto; padding: 1rem; overflow-wrap: anywhere; }
+    h2, h3, p { margin: 0; }
+    h2 + p, h3 + p, p + p { margin-block-start: .25rem; }
+    [hidden] { display: none !important; }
+    .viz-row, .nav { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+    .nav { margin-block: 1rem; }
+    .btn, .nav-link {
+      font: inherit;
+      color: inherit;
+      background: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: .5rem;
+      padding: .375rem .75rem;
+    }
+    .btn:enabled, .nav-link:enabled, .form-check, summary { cursor: pointer; }
+    .btn:disabled, .nav-link:disabled { opacity: .55; }
+    .btn-primary, .nav-link[aria-selected="true"] {
+      background: var(--primary);
+      color: var(--primary-foreground);
+    }
+    .progress { height: .5rem; margin-block: .75rem; border-radius: 1rem; background: var(--muted); }
+    .progress-bar { height: 100%; border-radius: inherit; background: var(--primary); }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+    .text-muted { color: var(--muted-foreground); }
+    .text-small, .viz-badge { font-size: .875rem; }
+    .viz-badge { padding: .125rem .5rem; border-radius: 1rem; background: var(--muted); }
+    .form-check { display: flex; align-items: baseline; gap: .5rem; }
+    .form-check-input { flex: none; margin: 0; accent-color: var(--primary); }
+    .form-control {
+      display: block;
+      width: 100%;
+      padding: .5rem;
+      border: 1px solid var(--border);
+      border-radius: .5rem;
+      color: inherit;
+      background: var(--background);
+      font: inherit;
+      resize: vertical;
+    }
+    pre { margin-block: .5rem; padding: .75rem; background: var(--muted); }
+    .table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+    .table :is(th, td) { padding: .25rem; text-align: start; border-bottom: 1px solid var(--border); }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <!-- QUIZ_FRAGMENT -->
+</body>
+</html>
