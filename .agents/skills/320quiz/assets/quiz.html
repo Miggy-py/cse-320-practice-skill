@@ -10,7 +10,11 @@
     <div id="quiz320-progress" class="progress" role="progressbar" aria-label="Questions answered" aria-valuemin="0" aria-valuemax="2" aria-valuenow="0"><div class="progress-bar" style="width:0%"></div></div>
     <div id="quiz320-question"></div>
     <div id="quiz320-feedback" aria-live="polite" aria-atomic="true"></div>
-    <div class="viz-row quiz320-space"><button id="quiz320-prev" class="btn" type="button">Previous</button><button id="quiz320-next" class="btn btn-primary" type="button">Next</button></div>
+    <div class="viz-row quiz320-space">
+      <button id="quiz320-prev" class="btn" type="button">Previous</button>
+      <button id="quiz320-next" class="btn btn-primary" type="button">Next</button>
+      <button id="quiz320-skip-reasks" class="btn" type="button" hidden>Skip re-asks and finish</button>
+    </div>
   </div>
   <div id="quiz320-results" role="tabpanel" aria-labelledby="quiz320-results-tab" hidden>
     <h3 id="quiz320-score"></h3>
@@ -25,6 +29,7 @@
 <style>
 /* Keep vertical margins inside the root measured by the chat. */
 #quiz320-preview{display:flow-root}
+#quiz320-skip-reasks[hidden]{display:none}
 #quiz320-preview .quiz320-space{margin:16px 0}
 #quiz320-preview .quiz320-options{display:flex;flex-direction:column;gap:16px;margin:20px 0;padding:0;border:0;min-width:0}
 #quiz320-preview .quiz320-code{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--foreground)}
@@ -79,7 +84,7 @@
   let signature=2166136261;
   for(const char of JSON.stringify(questions))signature=Math.imul(signature^char.charCodeAt(0),16777619);
   const quizKey=(signature>>>0).toString(36);
-  root.querySelector('h2 + p').textContent=bankSize+' questions · 5 choices each · Shuffled each attempt · Immediate marking · Missed questions come back · Explanations on demand';
+  root.querySelector('h2 + p').textContent=bankSize+' questions · 5 choices each · Optional re-asks at the end · Explanations on demand';
   const el=name=>root.querySelector('#quiz320-'+name);
   const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   // Seeded PRNG (mulberry32) so question order and option order are reproducible from state.
@@ -89,19 +94,21 @@
   // Each attempt presents a pool of bank indices in a shuffled order; answers hold the ORIGINAL option index.
   const fresh=(pool=questions.map((q,i)=>i),seed=newSeed())=>({format:'320quiz',quizKey,seed,items:shuffle(pool,rng(seed)),answers:Array(pool.length).fill(null),index:0,tab:'quiz',teach:''});
   let state=fresh();
-  const valid=s=>s?.format==='320quiz' && s.quizKey===quizKey && Number.isInteger(s.seed) && Array.isArray(s.items) && s.items.length>0 && s.items.every(i=>Number.isInteger(i)&&i>=0&&i<bankSize) && Number.isInteger(s.index) && s.index>=0 && s.index<s.items.length && Array.isArray(s.answers) && s.answers.length===s.items.length && s.answers.every(a=>a===null || Number.isInteger(a)&&a>=0&&a<5) && ['quiz','results'].includes(s.tab) && (s.teach===undefined||typeof s.teach==='string'&&s.teach.length<=TEACH_MAX);
+  const valid=s=>s?.format==='320quiz' && s.quizKey===quizKey && Number.isInteger(s.seed) && Array.isArray(s.items) && s.items.length>0 && s.items.every(i=>Number.isInteger(i)&&i>=0&&i<bankSize) && Number.isInteger(s.index) && s.index>=0 && s.index<s.items.length && Array.isArray(s.answers) && s.answers.length===s.items.length && s.answers.every(a=>a===null || Number.isInteger(a)&&a>=0&&a<5) && ['quiz','results'].includes(s.tab) && (s.teach===undefined||typeof s.teach==='string'&&s.teach.length<=TEACH_MAX)
+    && (s.skippedReasks===undefined||Number.isInteger(s.skippedReasks)&&s.skippedReasks>=0&&s.skippedReasks<=bankSize*(MAX_ASKS-1));
   const total=()=>state.items.length;
   const qAt=k=>questions[state.items[k]];
-  // Re-ask settings: a missed question returns REASK_GAP items later, at most MAX_ASKS times in one attempt.
-  const REASK_GAP=3,MAX_ASKS=3,TEACH_MAX=600;
+  const MAX_ASKS=3,TEACH_MAX=600;
   // occurrence(k): how many times the same bank question appears before item k (0 = first attempt).
   const occurrence=k=>state.items.slice(0,k).filter(i=>i===state.items[k]).length;
   const firstItems=()=>state.items.map((_,k)=>k).filter(k=>occurrence(k)===0);
+  const firstPassDone=()=>firstItems().every(k=>state.answers[k]!==null);
   const laterItems=k=>state.items.map((_,j)=>j).filter(j=>j>k&&state.items[j]===state.items[k]);
   // Option permutation for item k: perm[displayPosition] = original option index. Re-asks get a different order.
   const perm=k=>shuffle([0,1,2,3,4],rng((state.seed^Math.imul(state.items[k]+1,2654435761)^Math.imul(occurrence(k)+1,40503))>>>0));
   const letter=(k,original)=>'ABCDE'[perm(k).indexOf(original)];
   const count=()=>state.answers.filter(a=>a!==null).length;
+  const canSkipReasks=()=>count()<total()&&firstPassDone();
   const isCorrect=k=>state.answers[k]===qAt(k).answer;
   // Score, groups, and overview use FIRST attempts only. Re-asks are reported as recovery.
   const score=()=>firstItems().filter(k=>isCorrect(k)).length;
@@ -112,13 +119,16 @@
   const reasks=()=>total()-firstItems().length;
   function requeue(k){
     if(isCorrect(k)||occurrence(k)+1>=MAX_ASKS)return;
-    const at=Math.min(k+REASK_GAP,total());
-    state.items.splice(at,0,state.items[k]);
-    state.answers.splice(at,0,null);
+    state.items.push(state.items[k]);
+    state.answers.push(null);
+  }
+  function keepItems(indices){
+    state.items=indices.map(k=>state.items[k]);
+    state.answers=indices.map(k=>state.answers[k]);
   }
   const canExplain=()=>typeof window.openai?.sendFollowUpMessage==='function'&&!document.documentElement.hasAttribute('data-visualize-standalone');
   function save(){
-    if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:{format:state.format,answered:count(),total:total(),bankSize,correct:score(),firstAttemptQuestions:firstItems().length,reasks:reasks(),recovered:recoveredItems().length,firstChoiceLocked:true,shuffled:true,correctTopics:[...new Set(correctItems().map(k=>qAt(k).correctSkill))],missedTopics:[...new Set(missedItems().map(k=>qAt(k).topic))]},privateContent:state}).catch(()=>{});
+    if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:{format:state.format,answered:count(),total:total(),bankSize,correct:score(),firstAttemptQuestions:firstItems().length,reasks:reasks(),recovered:recoveredItems().length,skippedReasks:state.skippedReasks||0,firstChoiceLocked:true,shuffled:true,correctTopics:[...new Set(correctItems().map(k=>qAt(k).correctSkill))],missedTopics:[...new Set(missedItems().map(k=>qAt(k).topic))]},privateContent:state}).catch(()=>{});
   }
   function diagram(d){
     const tables=d.tables.map(table=>`<table class="table table-sm"><caption>${esc(table.label)}</caption><thead><tr>${table.columns.map(column=>`<th scope="col">${esc(column)}</th>`).join('')}</tr></thead><tbody>${table.rows.map(row=>`<tr>${row.map(cell=>`<td class="tabular-nums">${esc(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table>`).join('');
@@ -127,7 +137,7 @@
   function feedback(k){
     const q=qAt(k),answer=state.answers[k],index=k;
     const correct=answer===q.answer;
-    const again=!correct&&laterItems(k).length?' This question will come back shortly.':'';
+    const again=!correct&&laterItems(k).some(j=>state.answers[j]===null)?' A re-ask is queued for this question.':'';
     const recoveredNote=correct&&occurrence(k)>0?' Recovered on re-ask.':'';
     return `<div class="quiz320-space"><p class="quiz320-status">${correct?'Correct.':'Incorrect.'}${recoveredNote} Correct answer: ${letter(k,q.answer)}. ${esc(q.options[q.answer])}${again}</p><p class="text-small text-muted">Source: ${esc(q.source)}</p><button class="btn" type="button" data-explain="${index}">Explain this answer</button><div class="text-small" data-request-status aria-live="polite"></div></div>`;
   }
@@ -138,7 +148,10 @@
     const rightOverview=correct.length?group(correct).slice(0,3).map(g=>g.topic+' ('+g.count+' correct)').join('; ')+'.':'No correct answers in this attempt.';
     const wrongOverview=missed.length?group(missed).slice(0,3).map(g=>g.topic+' ('+g.count+' missed)').join('; ')+'.':'No incorrect answers in this attempt.';
     const improveOverview=missed.length?'Prioritize revisiting: '+group(missed).slice(0,3).map(g=>g.topic).join('; ')+'.':'All questions were correct. Try a harder check of the concepts you answered correctly.';
-    return `<div class="quiz320-space"><h3>Quick overview</h3><p><span class="quiz320-status">What was correct:</span> ${esc(rightOverview)}</p><p><span class="quiz320-status">What was wrong:</span> ${esc(wrongOverview)}</p><p><span class="quiz320-status">What to improve:</span> ${esc(improveOverview)}</p>${missed.length?`<p><span class="quiz320-status">Re-asked:</span> ${recoveredItems().length} of ${missed.length} missed questions were answered correctly when they came back.${missed.length-recoveredItems().length?' Still missed after re-ask: '+esc(group(missed.filter(k=>!recovered(k))).map(g=>g.topic).join('; '))+'.':''}</p>`:''}<p class="text-small text-muted">Score counts first attempts only. Based on this attempt only.</p></div>`;
+    const still=missed.filter(k=>!recovered(k));
+    const reaskSummary=missed.length?`<p><span class="quiz320-status">Recovered on re-ask:</span> ${missed.length-still.length} of ${missed.length} missed questions.${still.length?' Still to review: '+esc(group(still).map(g=>g.topic).join('; '))+'.':''}</p>`:'';
+    const skipped=state.skippedReasks||0;
+    return `<div class="quiz320-space"><h3>Quick overview</h3><p><span class="quiz320-status">What was correct:</span> ${esc(rightOverview)}</p><p><span class="quiz320-status">What was wrong:</span> ${esc(wrongOverview)}</p><p><span class="quiz320-status">What to improve:</span> ${esc(improveOverview)}</p>${reaskSummary}${skipped?`<p>Skipped ${skipped} ${skipped===1?'re-ask':'re-asks'}.</p>`:''}<p class="text-small text-muted">Score counts first attempts only. Based on this attempt only.</p></div>`;
   }
   function context(k){
     const q=qAt(k),chosen=state.answers[k],order=perm(k);
@@ -191,8 +204,8 @@
     const missed=missedItems();
     if(count()!==total()||!missed.length)return;
     const still=missed.filter(k=>!recovered(k));
-    const instruction='Build a follow-up CSE 320 practice quiz with the same skill and template as this one. Weight it toward the missed groups below, with the groups still missed after re-ask first. For each missed question write one or two near-transfer variants: keep the skill being tested, change the numbers, addresses, code values, or event ordering, and do not reuse the stems or answer texts. Keep five close choices per question, verify every key, and include a few questions from the groups answered correctly so the learner still has to switch between skills. Say which original question each variant practices.';
-    const payload={bankSize,correctOnFirstAttempt:score(),missedGroups:group(missed).map(({topic,count})=>({topic,count})),stillMissedAfterReask:group(still).map(({topic,count})=>({topic,count})),recoveredOnReask:recoveredItems().length,correctGroups:group(correctItems()).map(({topic,count})=>({topic,count})),missedQuestions:missed.map(k=>context(k))};
+    const instruction='Build a follow-up CSE 320 practice quiz with the same skill and template as this one. Weight it toward the missed groups below, prioritizing concepts the learner has yet to recover. For each missed question write one or two near-transfer variants: keep the skill being tested, change the numbers, addresses, code values, or event ordering, and do not reuse the stems or answer texts. Keep five close choices per question, verify every key, and include a few questions from the groups answered correctly so the learner still has to switch between skills. Say which original question each variant practices.';
+    const payload={bankSize,correctOnFirstAttempt:score(),missedGroups:group(missed).map(({topic,count})=>({topic,count})),unrecoveredGroups:group(still).map(({topic,count})=>({topic,count})),recoveredOnReask:recoveredItems().length,skippedReasks:state.skippedReasks||0,correctGroups:group(correctItems()).map(({topic,count})=>({topic,count})),missedQuestions:missed.map(k=>context(k))};
     await sendFollowUp(button,el('explanation-status'),'Practice what I missed','Create a practice quiz from these CSE 320 results. '+instruction+'\n\nQuiz context:\n'+JSON.stringify(payload,null,2));
   }
   function showCopyPrompt(status,prompt){
@@ -223,8 +236,11 @@
       render();save();
     }));
     el('prev').disabled=k===0;
-    el('next').textContent=k===total()-1&&count()===total()?'View overview':'Next';
-    el('next').disabled=k===total()-1&&count()!==total();
+    const last=k===total()-1;
+    const beforeReasks=reasks()>0&&k===firstItems().length-1;
+    el('next').textContent=last&&count()===total()?'View overview':beforeReasks?'Start re-asks':'Next';
+    el('next').disabled=(last&&count()!==total())||(beforeReasks&&!firstPassDone());
+    el('skip-reasks').hidden=!canSkipReasks();
   }
   function render(){
     const n=total(),done=count()===n;
@@ -252,9 +268,31 @@
       el('retry-missed').textContent=missed.length?'Retry missed ('+missed.length+')':'Retry missed';
     }
   }
-  function restore(snapshot){if(valid(snapshot?.privateContent))state=JSON.parse(JSON.stringify(snapshot.privateContent));render();}
+  function restore(snapshot){
+    if(valid(snapshot?.privateContent)){
+      state=JSON.parse(JSON.stringify(snapshot.privateContent));
+      // Older attempts interleaved re-asks with first attempts.
+      const firsts=firstItems();
+      if(firsts.some((k,i)=>k!==i)){
+        const order=firsts.concat(state.items.map((_,k)=>k).filter(k=>!firsts.includes(k)));
+        state.index=order.indexOf(state.index);
+        keepItems(order);
+      }
+      if(state.index>=firsts.length&&!firstPassDone())state.index=state.answers.indexOf(null);
+    }
+    render();
+  }
   el('prev').addEventListener('click',()=>{if(state.index>0){state.index--;render();save();}});
   el('next').addEventListener('click',()=>{if(state.index<total()-1)state.index++;else if(count()===total())state.tab='results';render();save();});
+  el('skip-reasks').addEventListener('click',()=>{
+    if(!canSkipReasks())return;
+    state.skippedReasks=total()-count();
+    keepItems(state.items.map((_,k)=>k).filter(k=>state.answers[k]!==null));
+    state.index=total()-1;
+    state.tab='results';
+    render();save();
+    el('results-tab').focus({preventScroll:true});
+  });
   el('test-tab').addEventListener('click',()=>{state.tab='quiz';render();save();});
   el('results-tab').addEventListener('click',()=>{if(count()===total()){state.tab='results';render();save();}});
   el('retry').addEventListener('click',()=>{state=fresh();el('explanation-status').textContent='';el('teach').innerHTML='';render();save();});

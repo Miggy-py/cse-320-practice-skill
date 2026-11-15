@@ -27,7 +27,7 @@ For the final, supply the final’s topic list and counts. If your instructor gi
 ## Taking the quiz
 
 - Your first answer counts toward your score. You can move between questions with **Previous** and **Next**.
-- If you miss a question, it comes back a few questions later with the choices reshuffled. Getting it right then doesn't change your score, but the results show which misses you recovered and which you still need to study.
+- Missed questions come back after the first pass with the choices reshuffled. Select **Skip re-asks and finish** to go straight to Results or to stop partway through the re-asks. Your score is based on first attempts. Results also show which misses you recovered and how many re-asks you skipped.
 - After answering, select **Explain this answer** to get help with that question.
 - Finish the quiz to see **Results** and what to practice next. Select **Practice what I missed** and Codex builds a new quiz with fresh variants of the questions you got wrong, so you practice the skill instead of memorizing the answers. Select **Retry missed** to redo only the questions you got wrong, or **Try again** for a fresh attempt. Questions and answer choices are reshuffled every attempt, so you can't rely on remembering "it was B."
 - On the results page, **Teach it back** asks you to explain one answer in your own words. Select **Check my explanation** and Codex tells you whether it's right and, if not, which step is missing.
