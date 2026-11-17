@@ -1,6 +1,6 @@
 <div id="quiz320-preview">
   <h2>CSE 320 · Practice quiz</h2>
-  <p class="text-muted">2 questions · 5 choices each · Immediate marking · Explanations on demand</p>
+  <p class="text-muted">2 questions · 5 choices each · Optional worked solutions</p>
   <div class="nav nav-pills" role="tablist" aria-label="Quiz preview">
     <button class="nav-link active" id="quiz320-test-tab" type="button" role="tab" aria-controls="quiz320-test" aria-selected="true">Quiz</button>
     <button class="nav-link" id="quiz320-results-tab" type="button" role="tab" aria-controls="quiz320-results" aria-selected="false" disabled>Results</button>
@@ -38,6 +38,9 @@
 #quiz320-preview .quiz320-tables caption{text-align:left;font-weight:500}
 #quiz320-preview .quiz320-tables th,#quiz320-preview .quiz320-tables td{overflow-wrap:anywhere}
 #quiz320-preview .quiz320-status{font-weight:500;color:var(--foreground)}
+#quiz320-preview .quiz320-method{margin-block-start:8px}
+#quiz320-preview .quiz320-method ol{margin:8px 0 0;padding-inline-start:24px;overflow-wrap:anywhere}
+#quiz320-preview .quiz320-method li+li{margin-block-start:4px}
 #quiz320-preview .quiz320-review-item{padding:16px 0;border-bottom:1px solid var(--border)}
 #quiz320-preview .quiz320-teach-field{width:100%;max-width:100%;box-sizing:border-box;margin:8px 0}
 </style>
@@ -56,7 +59,12 @@
     ],
     "answer": 1,
     "correctSkill": "Calculating sets and splitting address bits",
-    "source": "Template example · cache geometry"
+    "source": "Template example · cache geometry",
+    "workedSteps": [
+      "Each set holds 2 × 32 = 64 bytes. Divide 2,048 by 64 to get 32 sets.",
+      "Count 5 offset bits for the 32 bytes per block and 5 index bits for the 32 sets.",
+      "Subtract those fields from the 32-bit address: 32 − 5 − 5 = 22 tag bits."
+    ]
   },
   {
     "id": "side-effects",
@@ -72,7 +80,12 @@
     ],
     "answer": 2,
     "correctSkill": "Tracing function side effects before moving a call",
-    "source": "Template example · function side effects"
+    "source": "Template example · function side effects",
+    "workedSteps": [
+      "Trace the original loop. The four calls return 1, 2, 3, and 4, so the sum is 10 and calls is 4.",
+      "Reset calls to 0. The replacement calls next_value once and stores 1 in v.",
+      "Add v four times to get 4. The replacement ends with (sum, calls) = (4, 1)."
+    ]
   }
 ]
 </script>
@@ -82,11 +95,13 @@
   const questions=JSON.parse(document.getElementById('quiz320-preview-bank').textContent);
   const bankSize=questions.length;
   let signature=2166136261;
-  for(const char of JSON.stringify(questions))signature=Math.imul(signature^char.charCodeAt(0),16777619);
+  // Editing a walkthrough preserves saved answers and shuffled choices.
+  const scoredQuestions=questions.map(({workedSteps,...question})=>question);
+  for(const char of JSON.stringify(scoredQuestions))signature=Math.imul(signature^char.charCodeAt(0),16777619);
   const quizKey=(signature>>>0).toString(36);
   const standalone=document.documentElement.hasAttribute('data-quiz-standalone');
   const storageKey='320quiz:'+root.id+':'+quizKey;
-  root.querySelector('h2 + p').textContent=bankSize+' questions · 5 choices each · Optional re-asks at the end · Explanations on demand';
+  root.querySelector('h2 + p').textContent=bankSize+' questions · 5 choices each · Optional re-asks at the end';
   const el=name=>root.querySelector('#quiz320-'+name);
   const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   // Seeded PRNG (mulberry32) so question order and option order are reproducible from state.
@@ -145,11 +160,14 @@
     return `<div class="quiz320-space"><p class="quiz320-status">${esc(d.label)}</p>${d.notes?`<p>${esc(d.notes)}</p>`:''}<div class="quiz320-tables">${tables}</div>${d.source?`<p class="text-small text-muted">${esc(d.source)}</p>`:''}</div>`;
   }
   function feedback(k){
-    const q=qAt(k),answer=state.answers[k],index=k;
+    const q=qAt(k),answer=state.answers[k];
     const correct=answer===q.answer;
     const again=!correct&&laterItems(k).some(j=>state.answers[j]===null)?' A re-ask is queued for this question.':'';
     const recoveredNote=correct&&occurrence(k)>0?' Recovered on re-ask.':'';
-    return `<div class="quiz320-space"><p class="quiz320-status">${correct?'Correct.':'Incorrect.'}${recoveredNote} Correct answer: ${letter(k,q.answer)}. ${esc(q.options[q.answer])}${again}</p><p class="text-small text-muted">Source: ${esc(q.source)}</p><button class="btn" type="button" data-explain="${index}">Explain this answer</button><div class="text-small" data-request-status aria-live="polite"></div></div>`;
+    const method=Array.isArray(q.workedSteps)&&q.workedSteps.length
+      ? `<ol>${q.workedSteps.map(step=>`<li>${esc(step)}</li>`).join('')}</ol>`
+      : `<button class="btn" type="button" data-ask-method="${k}">Ask for the steps</button><div class="text-small" data-request-status aria-live="polite"></div>`;
+    return `<div class="quiz320-space"><p class="quiz320-status">${correct?'Correct.':'Incorrect.'}${recoveredNote} Correct answer: ${letter(k,q.answer)}. ${esc(q.options[q.answer])}${again}</p><p class="text-small text-muted">Source: ${esc(q.source)}</p><details class="quiz320-method"><summary class="cursor-interaction">How it’s done</summary>${method}</details></div>`;
   }
   function group(ks){const groups=new Map();for(const k of ks){const q=qAt(k);const topic=q.reviewGroup||q.correctSkill||q.topic;const g=groups.get(topic)||{topic,count:0,k};g.count++;groups.set(topic,g);}return [...groups.values()].sort((a,b)=>b.count-a.count);}
   function overview(){
@@ -172,10 +190,13 @@
     const status=index===null?el('explanation-status'):button.parentElement.querySelector('[data-request-status]');
     const correct=correctItems(),missed=missedItems();
     const priorities=group(missed.length?missed:correct).slice(0,3);
-    const instruction=index===null?'Explain these CSE 320 quiz results in chat. Report actual strengths and mistakes without inventing private reasoning. Use the supplied priority examples, explain the correct and selected wrong answer where applicable, and give at most three prioritized practice steps. If there were no mistakes, offer a harder check.':'Explain this CSE 320 quiz answer in chat. Explain why the correct answer is correct. If the selected answer is wrong, explain only that selected option’s specific flaw and give one concrete practice step. If it is correct, identify what it gets right and suggest a small next challenge. Do not explain other unselected distractors unless asked.';
+    const instruction=index===null
+      ? 'Summarize these CSE 320 quiz results. Walk through the method for the priority examples and give at most three practice steps. If all first attempts were correct, offer a harder check.'
+      : 'Show how to solve this CSE 320 question in a few short steps. Start with the rule or setup, then show the calculation or trace that produces the answer. Focus on the method.';
     const payload=index===null?{answered:count(),total:total(),correct:score(),correctGroups:group(correct).map(({topic,count})=>({topic,count})),missedGroups:group(missed).map(({topic,count})=>({topic,count})),priorityExamples:priorities.map(g=>context(g.k))}:context(index);
+    if(index!==null)delete payload.selected;
     const prompt=instruction+' Verify the answer calculation and source support before explaining. Report any answer-key error.\n\nQuiz context:\n'+JSON.stringify(payload,null,2);
-    await sendFollowUp(button,status,index===null?'Explain my quiz results':'Explain Question '+(index+1),prompt);
+    await sendFollowUp(button,status,index===null?'Explain my quiz results':'Show the steps for Question '+(index+1),prompt);
   }
   async function sendFollowUp(button,status,title,prompt){
     if(!canExplain()){
@@ -197,7 +218,7 @@
     const k=teachTarget();
     if(k===null){el('teach').innerHTML='';return;}
     const q=qAt(k),missed=!isCorrect(k);
-    el('teach').innerHTML=`<h3>Teach it back</h3><p>${missed?'You missed':'You got'} Question ${k+1} (${esc(q.topic)}). Without looking at the feedback, explain in one or two sentences why ${letter(k,q.answer)} is correct${missed?' and where your answer went wrong':''}.</p><label class="form-label" for="quiz320-teach-text">Your explanation</label><textarea id="quiz320-teach-text" class="form-control quiz320-teach-field" rows="3" maxlength="${TEACH_MAX}" placeholder="Start with the rule or computation, then the number or value it produces.">${esc(state.teach||'')}</textarea><div class="viz-row"><button id="quiz320-teach-check" class="btn" type="button" ${(state.teach||'').trim()?'':'disabled'}>Check my explanation</button></div><div id="quiz320-teach-status" class="text-small" aria-live="polite"></div>`;
+    el('teach').innerHTML=`<h3>Teach it back</h3><p>${missed?'You missed':'You got'} Question ${k+1} (${esc(q.topic)}). Without looking at the feedback, explain in one or two sentences why ${letter(k,q.answer)} is correct.</p><label class="form-label" for="quiz320-teach-text">Your explanation</label><textarea id="quiz320-teach-text" class="form-control quiz320-teach-field" rows="3" maxlength="${TEACH_MAX}" placeholder="Start with the rule or computation, then the number or value it produces.">${esc(state.teach||'')}</textarea><div class="viz-row"><button id="quiz320-teach-check" class="btn" type="button" ${(state.teach||'').trim()?'':'disabled'}>Check my explanation</button></div><div id="quiz320-teach-status" class="text-small" aria-live="polite"></div>`;
     const field=el('teach-text');
     field.addEventListener('input',()=>{state.teach=field.value.slice(0,TEACH_MAX);el('teach-check').disabled=!state.teach.trim();save();});
     el('teach-check').addEventListener('click',event=>requestTeachCheck(event.currentTarget,k));
@@ -309,7 +330,7 @@
   el('retry-missed').addEventListener('click',()=>{const missed=[...new Set(missedItems().map(k=>state.items[k]))];if(!missed.length)return;state=fresh(missed);el('explanation-status').textContent='';el('teach').innerHTML='';render();save();});
   el('explain-results').addEventListener('click',event=>{if(count()===total())requestExplanation(event.currentTarget,null);});
   el('practice-missed').addEventListener('click',event=>requestPractice(event.currentTarget));
-  root.addEventListener('click',event=>{const button=event.target.closest('button[data-explain]');if(button&&root.contains(button))requestExplanation(button,Number(button.dataset.explain));});
+  root.addEventListener('click',event=>{const button=event.target.closest('button[data-ask-method]');if(button&&root.contains(button))requestExplanation(button,Number(button.dataset.askMethod));});
   if(!standalone)window.addEventListener('openai:set_globals',event=>{const snapshot=event.detail?.globals?.widgetState;if(snapshot&&JSON.stringify(snapshot.privateContent)!==JSON.stringify(state))restore(snapshot);});
   restore(savedState());
 })();

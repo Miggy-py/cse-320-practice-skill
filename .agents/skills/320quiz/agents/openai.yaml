@@ -1,4 +1,4 @@
 interface:
   display_name: "CSE 320 Practice Quiz"
-  short_description: "Close exam choices with explanations on demand"
-  default_prompt: "Use $320quiz to create a CSE 320 multiple-choice quiz for my exam using my topic counts, review materials, and assignment specifications with five close, exam-like choices, immediate answer marking, explanations on demand, and a short study overview."
+  short_description: "Close exam choices with expandable worked solutions"
+  default_prompt: "Use $320quiz to create a CSE 320 multiple-choice quiz for my exam using my topic counts, review materials, and assignment specifications with five close, exam-like choices, immediate answer marking, expandable worked solutions, and a short study overview."

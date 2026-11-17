@@ -1,6 +1,8 @@
 # Question bank
 
-The starter contains a JSON array. Each item has a stable `id`, visible `topic`, stem `q`, five `options`, zero-based `answer`, `correctSkill`, and `source`. Use `reviewGroup` to combine related skills in the results. The optional `code` is plain text. Put execution assumptions in the stem or diagram notes so the explanation request carries them. Cite a PDF page with its filename, a transcript question or line range, or a README path and heading. Keep draft calculations outside the shipped bank.
+The starter contains a JSON array. Each item has a stable `id`, visible `topic`, stem `q`, five `options`, zero-based `answer`, `correctSkill`, `source`, and `workedSteps`. Use `reviewGroup` to combine related skills in the results. The optional `code` is plain text. Put execution assumptions in the stem or diagram notes so follow-up requests carry them. Cite a PDF page with its filename, a transcript question or line range, or a README path and heading.
+
+Write `workedSteps` as an array of short plain-text steps for **How it’s done**. Start with the governing rule or setup, then apply it to the question’s values or code. End with the derived result and refer to answer text or values, since the displayed choices shuffle. For older banks that lack the field, the disclosure offers **Ask for the steps**.
 
 A question can include a textual diagram built from one or more tables. Use concise headings and enough context to interpret values. List columns in display order and supply one value per column in every row.
 

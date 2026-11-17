@@ -32,7 +32,7 @@ For the final, supply the final’s topic list and counts. If your instructor gi
 
 - Your first answer counts toward your score. You can move between questions with **Previous** and **Next**.
 - Missed questions come back after the first pass with the choices reshuffled. Select **Skip re-asks and finish** to go straight to Results or to stop partway through the re-asks. Your score is based on first attempts. Results also show which misses you recovered and how many re-asks you skipped.
-- After answering, select **Explain this answer** to get help with that question.
+- After answering, expand **How it’s done** to see the steps for solving the question.
 - Finish the quiz to see **Results** and what to practice next. Use **Practice what I missed** to request fresh questions on the same concepts, **Retry missed** to redo missed questions, or **Try again** for a fresh attempt. Questions and answer choices are reshuffled each time.
 - On the results page, **Teach it back** asks you to explain one answer in your own words. Use **Check my explanation** to ask your agent for feedback.
 
